@@ -7,6 +7,8 @@ struct AppData: Codable, Sendable {
     var lastRefreshAt: Date?
     var lastRefreshError: String?
     var costSyncStates: [CreditPlatform: CostSyncState]?
+    var providerSyncStatuses: [CreditPlatform: ProviderSyncStatus]?
+    var syncEvents: [SyncEvent]?
 }
 
 struct CostSyncState: Codable, Sendable {

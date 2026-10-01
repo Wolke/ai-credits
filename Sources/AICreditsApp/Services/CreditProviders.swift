@@ -33,32 +33,46 @@ struct BillingHTTPClient: Sendable {
     var sleep: @Sendable (TimeInterval) async throws -> Void = { seconds in
         try await Task.sleep(for: .seconds(seconds))
     }
+    var onEvent: (@Sendable (BillingRequestEvent) async -> Void)?
 
     func data(for request: URLRequest) async throws -> Data {
         var request = request
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
+        let endpoint = "\(request.httpMethod ?? "GET") \(request.url?.host ?? "")\(request.url?.path ?? "")"
+        let secrets = ["Authorization", "xi-api-key", "x-api-key"].compactMap { request.value(forHTTPHeaderField: $0) }
+            .flatMap { [$0, $0.replacingOccurrences(of: "Bearer ", with: "")] }
         for attempt in 0...2 {
             try Task.checkCancellation()
+            await onEvent?(.init(phase: .started, endpoint: endpoint, message: "正在呼叫 API（第 \(attempt + 1)/3 次嘗試）"))
             do {
                 let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw ProviderError.invalidResponse }
+                await onEvent?(.init(phase: .response, endpoint: endpoint, message: "收到 HTTP \(http.statusCode)", statusCode: http.statusCode))
                 if (200..<300).contains(http.statusCode) { return data }
                 if ([408, 429].contains(http.statusCode) || (500..<600).contains(http.statusCode)), attempt < 2 {
                     let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
-                    try await sleep(min(30, max(1, retryAfter ?? pow(2, Double(attempt)))))
+                    let delay = min(30, max(1, retryAfter ?? pow(2, Double(attempt))))
+                    await onEvent?(.init(phase: .retry, endpoint: endpoint, message: "HTTP \(http.statusCode)；\(Int(delay)) 秒後重試（第 \(attempt + 2)/3 次）", statusCode: http.statusCode))
+                    try await sleep(delay)
                     continue
                 }
                 let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                 let detail = (object?["error"] ?? object?["detail"]) as? [String: Any]
-                let message = detail?["message"] as? String ?? object?["detail"] as? String
+                let message = detail?["message"] as? String ?? object?["detail"] as? String ?? object?["error_description"] as? String
+                    ?? object?["error"] as? String ?? object?["title"] as? String
                     ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-                throw ProviderError.http(http.statusCode, String(message.prefix(250)))
-            } catch let error as URLError where attempt < 2 && [
-                .timedOut, .networkConnectionLost, .notConnectedToInternet,
-                .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed
-            ].contains(error.code) {
-                try await sleep(pow(2, Double(attempt)))
+                let code = detail?["status"] as? String ?? detail?["code"] as? String
+                throw ProviderError.http(http.statusCode, DiagnosticText.redact([code, message].compactMap { $0 }.joined(separator: "："), secrets: secrets))
+            } catch let error as URLError {
+                await onEvent?(.init(phase: .networkError, endpoint: endpoint, message: "網路錯誤（\(error.code.rawValue)）：\(URLError(error.code).localizedDescription)"))
+                guard attempt < 2 && [
+                    .timedOut, .networkConnectionLost, .notConnectedToInternet,
+                    .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed
+                ].contains(error.code) else { throw error }
+                let delay = pow(2, Double(attempt))
+                await onEvent?(.init(phase: .retry, endpoint: endpoint, message: "連線失敗；\(Int(delay)) 秒後重試（第 \(attempt + 2)/3 次）"))
+                try await sleep(delay)
             }
         }
         throw ProviderError.invalidResponse

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CreditsWindowView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.openWindow) private var openWindow
     @State private var editingEntry: CreditEntry?
     @State private var showingNewEntry = false
     @State private var showingExpired = false
@@ -51,6 +52,7 @@ struct CreditsWindowView: View {
             }
             .navigationTitle("AI Credits")
             .toolbar {
+                Button("API 狀態", systemImage: "network") { openWindow(id: "sync-status") }
                 Toggle(isOn: $showingExpired) {
                     Label("顯示已過期", systemImage: "clock.arrow.circlepath")
                 }

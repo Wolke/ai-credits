@@ -17,7 +17,13 @@ struct ElevenLabsProvider: Sendable {
     func fetchBalance(apiKey: String) async throws -> ElevenLabsBalance {
         var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/user/subscription")!)
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-        let data = try await client.data(for: request)
+        let data: Data
+        do {
+            data = try await client.data(for: request)
+        } catch ProviderError.http(let code, let message) where [401, 403].contains(code)
+                    && (message.contains("missing_permissions") || message.contains("user_read")) {
+            throw ProviderError.http(code, "ElevenLabs 金鑰缺少 User → Read（user_read）權限。請在 ElevenLabs 的 Developers → API Keys 編輯此金鑰並開啟 User 的 Read，再按立即測試。")
+        }
         let subscription = try JSONDecoder().decode(Subscription.self, from: data)
         guard subscription.character_limit >= 0, subscription.character_count >= 0 else {
             throw ProviderError.invalidResponse

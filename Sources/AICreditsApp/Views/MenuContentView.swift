@@ -14,8 +14,8 @@ struct MenuContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button { Task { await store.refresh() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .rotationEffect(store.isRefreshing ? .degrees(360) : .zero)
+                    if store.isRefreshing { ProgressView().controlSize(.small) }
+                    else { Image(systemName: "arrow.clockwise") }
                 }
                 .buttonStyle(.plain)
                 .disabled(store.isRefreshing)
@@ -31,14 +31,30 @@ struct MenuContentView: View {
                 }
             }
 
-            if let error = store.data.lastRefreshError {
-                Label(error, systemImage: "exclamationmark.triangle")
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(store.isRefreshing ? "API 同步中…" : "API 同步狀態").font(.caption.bold())
+                    Spacer()
+                    Button("查看紀錄") { openWindow(id: "sync-status") }
+                        .buttonStyle(.link).font(.caption)
+                }
+                ForEach(CreditPlatform.allCases.filter(\.supportsAutomaticSync)) { platform in
+                    let status = store.status(for: platform)
+                    HStack(spacing: 6) {
+                        Image(systemName: status.symbol).foregroundStyle(status.color)
+                        Text(platform.rawValue)
+                        Spacer()
+                        Text(status.stateLabel).foregroundStyle(status.color)
+                    }
                     .font(.caption)
-                    .foregroundStyle(.orange)
-                    .lineLimit(3)
-            } else if let date = store.data.lastRefreshAt {
-                Text("上次同步：\(date.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Lovable、Notion：手動管理，不會呼叫 API")
+                    .font(.caption2).foregroundStyle(.secondary)
+                if store.data.lastRefreshError != nil || store.persistenceError != nil {
+                    Button("同步有錯誤，查看完整原因") { openWindow(id: "sync-status") }
+                        .buttonStyle(.link).foregroundStyle(.red).font(.caption)
+                }
             }
 
             Divider()
@@ -57,7 +73,7 @@ struct MenuContentView: View {
             }
         }
         .padding(14)
-        .frame(width: 360)
+        .frame(width: 380)
         .task { await store.refreshIfNeeded() }
     }
 }

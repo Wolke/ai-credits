@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.openWindow) private var openWindow
     @State private var openAIKey = ""
     @State private var claudeKey = ""
     @State private var elevenLabsKey = ""
@@ -21,6 +22,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("連線診斷") {
+                Button("API 狀態與紀錄") { openWindow(id: "sync-status") }
+                Text("可查看各平台的請求次數、HTTP 回應、重試及完整錯誤；未設定金鑰時會明確顯示沒有發起 API 請求。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("自動同步") {
                 SecureField("OpenAI Admin API Key（留空保留原值）", text: $openAIKey)
                 ProviderStatusRow(platform: .openAI, status: store.providerStatuses[.openAI])
@@ -40,7 +46,7 @@ struct SettingsView: View {
             Section("ElevenLabs credits") {
                 SecureField("ElevenLabs API Key（留空保留原值）", text: $elevenLabsKey)
                 ProviderStatusRow(platform: .elevenLabs, status: store.providerStatuses[.elevenLabs])
-                Text("API Key 需有 User: Read 權限。每 15 分鐘讀取方案總額度、已使用 credits 與下次重設時間，並自動建立或更新方案額度。")
+                Text("在 ElevenLabs → Developers → API Keys 編輯金鑰，將 User 設為 Read（user_read）。這個 App 只讀取訂閱資料，不需要語音生成權限。每 15 分鐘讀取方案總額度、已使用 credits 與下次重設時間，並自動建立或更新方案額度。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("儲存並測試 ElevenLabs") { saveElevenLabs() }
@@ -208,48 +214,6 @@ struct SettingsView: View {
         } catch {
             launchAtLogin = SMAppService.mainApp.status == .enabled
             message = error.localizedDescription
-        }
-    }
-}
-
-private struct ProviderStatusRow: View {
-    let platform: CreditPlatform
-    let status: ProviderSyncStatus?
-
-    var body: some View {
-        if let status {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: icon(for: status.state))
-                    .foregroundStyle(color(for: status.state))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(platform.rawValue)：\(status.message)")
-                        .font(.caption)
-                        .foregroundStyle(status.state == .failed ? Color.red : Color.secondary)
-                        .textSelection(.enabled)
-                    if let date = status.fetchedAt {
-                        Text("檢查時間：\(date.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption2).foregroundStyle(.tertiary)
-                    }
-                }
-            }
-        }
-    }
-
-    private func icon(for state: ProviderSyncStatus.State) -> String {
-        switch state {
-        case .notConfigured: "key.slash"
-        case .syncing: "arrow.triangle.2.circlepath"
-        case .success: "checkmark.circle.fill"
-        case .failed: "xmark.octagon.fill"
-        }
-    }
-
-    private func color(for state: ProviderSyncStatus.State) -> Color {
-        switch state {
-        case .notConfigured: .secondary
-        case .syncing: .blue
-        case .success: .green
-        case .failed: .red
         }
     }
 }

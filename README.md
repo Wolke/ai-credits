@@ -36,7 +36,7 @@ OpenAI／Claude 會讀取全部分頁；查詢起點會持久保存，不因某�
 
 ### ElevenLabs credits
 
-1. 在 ElevenLabs 建立可讀取使用者資料的 API Key（限制權限時啟用 User: Read）。
+1. 在 ElevenLabs 建立可讀取使用者資料的 API Key，在 Developers → API Keys 的權限中將 User 設為 Read（`user_read`）；不需要 Text to Speech、Voices 或寫入權限。
 2. 到 App「設定 → ElevenLabs credits」貼上金鑰，按「儲存並測試 ElevenLabs」。
 3. App 自動建立方案額度；之後更新同一筆紀錄，跨期時套用新的總額度、剩餘量與重設時間。
 
@@ -50,6 +50,20 @@ OpenAI／Claude 會讀取全部分頁；查詢起點會持久保存，不因某�
 4. 在 AI Credits 設定頁輸入完整表名（`project.dataset.gcp_billing_export_v1_...`）並匯入 JSON。
 
 App 每 6 小時查詢 Gemini／Generative Language API 的 gross cost，依到期日優先扣除同幣別額度。BigQuery export 資料可能延遲。
+
+## 怎麼確認有沒有呼叫 API
+
+使用 **1.6.1 或更新版本**，點選選單列 App → **查看紀錄**（也可從設定或管理視窗開啟「API 狀態與紀錄」）：
+
+- 各平台分別顯示尚未測試、未設定、同步中、成功或失敗。
+- 「最近嘗試」與「最近成功」分開記錄；失敗不會更新成功時間。
+- 「本次已發起 N 次 HTTP 請求」會計入分頁、重試及 Gemini 的 Google 登入。缺少金鑰、Keychain 無法讀取或設定不完整時會顯示沒有發起請求。
+- 每次請求會記錄時間、平台、API 路徑、HTTP 回應碼與重試；HTTP 200 但資料解析失敗仍標示失敗。
+- 最近 120 筆紀錄保存在本機，重啟後仍可查看。紀錄不包含請求標頭、本文、查詢參數或金鑰；伺服器錯誤中的憑證會遮蔽。
+- ElevenLabs 回傳 `missing_permissions`／`user_read` 時，會直接提示開啟 **User → Read**。若有 IP 白名單，請確認目前網路的 IP 已被允許。
+- Lovable、Notion 會明確標示手動管理，不會呼叫 API。
+
+請確認選單上的版本號。專案 `dist` 中的新版不會自動替換 `/Applications/AI Credits.app`；退出舊版，將新版拖到「應用程式」替換後重新開啟。
 
 ## 本機資料與排錯
 

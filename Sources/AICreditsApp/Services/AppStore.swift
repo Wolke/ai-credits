@@ -6,6 +6,7 @@ import AppKit
 final class AppStore: ObservableObject {
     @Published private(set) var data: AppData
     @Published private(set) var isRefreshing = false
+    @Published private(set) var persistenceError: String?
     @Published private(set) var providerStatuses: [CreditPlatform: ProviderSyncStatus] = [:]
 
     private let persistence: PersistenceService
@@ -33,6 +34,15 @@ final class AppStore: ObservableObject {
         self.client = client
         self.now = now
         self.data = (try? persistence.load()) ?? AppData()
+        self.providerStatuses = data.providerSyncStatuses ?? [:]
+        for platform in CreditPlatform.allCases where platform.supportsAutomaticSync {
+            if providerStatuses[platform]?.state == .syncing {
+                providerStatuses[platform]?.state = .failed
+                providerStatuses[platform]?.message = "上次同步未完成（App 已結束或重新啟動）；請重新測試"
+                appendEvent(platform: platform, message: "上次同步中斷，保留原有額度")
+            }
+        }
+        if data.providerSyncStatuses != nil { updateRefreshError() }
         if automaticallyRefresh { scheduleRefresh() }
     }
 
@@ -96,7 +106,8 @@ final class AppStore: ObservableObject {
             data.costSyncStates?[platform] = nil
             data.providerLastCosts[platform] = nil
         }
-        providerStatuses[platform] = .notConfigured(trimmed.isEmpty ? platform.credentialHint : "金鑰已儲存，等待同步")
+        setStatus(trimmed.isEmpty ? .notConfigured(platform.credentialHint) : ProviderSyncStatus(state: .idle, message: "金鑰已儲存，等待測試"), for: platform)
+        appendEvent(platform: platform, message: trimmed.isEmpty ? "已清除金鑰" : "金鑰已儲存，尚未測試")
         lastAttempts[platform] = nil
         updateRefreshError()
         save()
@@ -147,39 +158,55 @@ final class AppStore: ObservableObject {
     }
 
     private func performRefresh(platform: CreditPlatform, revision: Int, allowInteraction: Bool) async {
-        lastAttempts[platform] = now()
+        let attemptedAt = now()
+        lastAttempts[platform] = attemptedAt
+        let previous = providerStatuses[platform]
+        var pending = ProviderSyncStatus(state: .syncing, message: "正在檢查金鑰；尚未發起 HTTP 請求")
+        pending.attemptedAt = attemptedAt
+        pending.lastSuccessAt = previous?.lastSuccessAt ?? previous?.fetchedAt
+        pending.trigger = allowInteraction ? "手動" : "自動"
+        providerStatuses[platform] = pending
+        appendEvent(platform: platform, message: "\(pending.trigger ?? "")同步開始，正在檢查金鑰")
+        save()
+        defer {
+            updateRefreshError()
+            saveAndCheckNotifications()
+        }
         var credential = ""
         do {
             guard let key = try keychain.get(for: platform, allowInteraction: allowInteraction), !key.isEmpty else {
-                providerStatuses[platform] = .notConfigured(platform.credentialHint)
-                updateRefreshError()
-                save()
+                setStatus(.notConfigured(platform.credentialHint + "；未發起 API 請求"), for: platform)
+                appendEvent(platform: platform, message: "略過：" + platform.credentialHint + "；未發起 API 請求")
                 return
             }
             credential = key
             let source = billingSource(for: platform)
             if source == "" {
-                providerStatuses[platform] = .notConfigured("尚未設定 BigQuery Billing Export 表名")
-                updateRefreshError()
-                save()
+                setStatus(.notConfigured("尚未設定 BigQuery Billing Export 表名；未發起 API 請求"), for: platform)
+                appendEvent(platform: platform, message: "略過：尚未設定 BigQuery 表名；未發起 API 請求")
                 return
             }
-            providerStatuses[platform] = .syncing
+            var monitoredClient = client
+            let originalObserver = client.onEvent
+            monitoredClient.onEvent = { [weak self] event in
+                await originalObserver?(event)
+                await self?.recordHTTPEvent(event, platform: platform, revision: revision, credential: key)
+            }
             if platform == .elevenLabs {
-                let balance = try await ElevenLabsProvider(client: client, now: now).fetchBalance(apiKey: key)
+                let balance = try await ElevenLabsProvider(client: monitoredClient, now: now).fetchBalance(apiKey: key)
                 guard revision == credentialRevisions[platform, default: 0] else { return }
                 CostSynchronizer.apply(balance, to: &data)
-                providerStatuses[platform] = .subscription(balance)
+                setStatus(.subscription(balance), for: platform)
             } else {
                 let start = CostSynchronizer.startDate(for: platform, in: data, now: now(), source: source)
                 let usage: ProviderUsage
                 switch platform {
                 case .openAI:
-                    usage = try await OpenAIProvider(client: client, now: now).fetchUsage(apiKey: key, since: start)
+                    usage = try await OpenAIProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
                 case .claude:
-                    usage = try await ClaudeProvider(client: client, now: now).fetchUsage(apiKey: key, since: start)
+                    usage = try await ClaudeProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
                 case .gemini:
-                    usage = try await GeminiBigQueryProvider(session: client.session, now: now).fetchUsage(
+                    usage = try await GeminiBigQueryProvider(client: monitoredClient, now: now).fetchUsage(
                         serviceAccountJSON: key, billingTable: source ?? "", since: start
                     )
                 case .elevenLabs, .lovable, .notion:
@@ -187,7 +214,8 @@ final class AppStore: ObservableObject {
                 }
                 guard revision == credentialRevisions[platform, default: 0] else { return }
                 if platform == .gemini && source != GeminiSettings.billingTable.trimmingCharacters(in: .whitespacesAndNewlines) {
-                    providerStatuses[platform] = .notConfigured("表名已變更，請重新同步")
+                    setStatus(.notConfigured("表名已變更，請重新同步"), for: platform)
+                    appendEvent(platform: platform, message: "設定已變更，未套用這次回應")
                     return
                 }
                 let firstSync = data.costSyncStates?[platform] == nil || data.costSyncStates?[platform]?.source != source
@@ -196,20 +224,56 @@ final class AppStore: ObservableObject {
                     !$0.isArchived && $0.platform == platform && $0.remainingAmount > 0
                         && $0.receivedAt <= usage.fetchedAt && $0.unit.caseInsensitiveCompare(usage.currency) == .orderedSame
                 }
-                providerStatuses[platform] = .success(
+                setStatus(.success(
                     cost: usage.cumulativeCost, currency: usage.currency, date: usage.fetchedAt,
                     needsCreditEntry: !hasEntry, firstSync: firstSync
-                )
+                ), for: platform)
             }
             data.lastRefreshAt = now()
+            providerStatuses[platform]?.lastSuccessAt = now()
+            appendEvent(platform: platform, message: "同步成功：" + (providerStatuses[platform]?.message ?? ""))
         } catch {
             guard revision == credentialRevisions[platform, default: 0] else { return }
-            var message = error.localizedDescription
-            if !credential.isEmpty { message = message.replacingOccurrences(of: credential, with: "[已隱藏金鑰]") }
-            providerStatuses[platform] = .failed(message)
+            let detail = error is DecodingError ? "API 已回應，但資料格式不符，未更新額度。請查看 HTTP 回應紀錄。" : error.localizedDescription
+            let message = DiagnosticText.redact(detail, secrets: [credential])
+            setStatus(.failed(message), for: platform)
+            appendEvent(platform: platform, message: "同步失敗：" + message)
         }
-        updateRefreshError()
-        saveAndCheckNotifications()
+    }
+
+    func status(for platform: CreditPlatform) -> ProviderSyncStatus {
+        providerStatuses[platform] ?? .idle
+    }
+
+    private func setStatus(_ status: ProviderSyncStatus, for platform: CreditPlatform) {
+        let previous = providerStatuses[platform]
+        var status = status
+        status.attemptedAt = previous?.attemptedAt
+        status.lastSuccessAt = previous?.lastSuccessAt ?? previous?.fetchedAt
+        status.requestCount = previous?.requestCount ?? 0
+        status.lastHTTPStatus = previous?.lastHTTPStatus
+        status.trigger = previous?.trigger
+        providerStatuses[platform] = status
+    }
+
+    private func recordHTTPEvent(_ event: BillingRequestEvent, platform: CreditPlatform, revision: Int, credential: String) {
+        guard revision == credentialRevisions[platform, default: 0] else { return }
+        var status = status(for: platform)
+        if event.phase == .started {
+            status.requestCount += 1
+            status.lastHTTPStatus = nil
+        }
+        if let code = event.statusCode { status.lastHTTPStatus = code }
+        status.message = DiagnosticText.redact(event.message, secrets: [credential])
+        providerStatuses[platform] = status
+        appendEvent(platform: platform, message: status.message, endpoint: DiagnosticText.redact(event.endpoint, secrets: [credential]))
+        save()
+    }
+
+    private func appendEvent(platform: CreditPlatform, message: String, endpoint: String? = nil) {
+        var events = data.syncEvents ?? []
+        events.append(SyncEvent(platform: platform, date: now(), message: DiagnosticText.redact(message), endpoint: endpoint))
+        data.syncEvents = Array(events.suffix(120))
     }
 
     private func updateRefreshError() {
@@ -254,40 +318,13 @@ final class AppStore: ObservableObject {
         Task { await checkNotifications() }
     }
 
-    private func save() { try? persistence.save(data) }
-}
-
-struct ProviderSyncStatus: Equatable, Sendable {
-    enum State: Equatable, Sendable { case notConfigured, syncing, success, failed }
-    var state: State
-    var message: String
-    var cumulativeCost: Decimal?
-    var currency: String?
-    var fetchedAt: Date?
-
-    static func notConfigured(_ message: String) -> Self {
-        Self(state: .notConfigured, message: message)
-    }
-    static let syncing = Self(state: .syncing, message: "正在連線官方帳務 API…")
-    static func failed(_ message: String) -> Self {
-        Self(state: .failed, message: message)
-    }
-    static func success(cost: Decimal, currency: String, date: Date, needsCreditEntry: Bool, firstSync: Bool = false) -> Self {
-        let suffix = needsCreditEntry ? "；請新增目前剩餘額度與到期日" : (firstSync ? "；已建立基準，之後扣除新增花費" : "；剩餘額度已更新")
-        return Self(
-            state: .success,
-            message: "API 連線成功，追蹤期間花費 \(cost.formatted()) \(currency)\(suffix)",
-            cumulativeCost: cost,
-            currency: currency,
-            fetchedAt: date
-        )
-    }
-}
-
-extension ProviderSyncStatus {
-    static func subscription(_ balance: ElevenLabsBalance) -> Self {
-        let reset = balance.resetsAt.map { "；下次重設：\($0.formatted(date: .abbreviated, time: .shortened))" }
-            ?? "；API 未提供下次重設時間"
-        return Self(state: .success, message: "剩餘 \(balance.remaining.formatted()) / \(balance.limit.formatted()) credits\(reset)", fetchedAt: balance.fetchedAt)
+    private func save() {
+        data.providerSyncStatuses = providerStatuses
+        do {
+            try persistence.save(data)
+            persistenceError = nil
+        } catch {
+            persistenceError = "無法儲存額度與同步紀錄：\(error.localizedDescription)"
+        }
     }
 }

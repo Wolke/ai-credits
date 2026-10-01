@@ -28,6 +28,11 @@ struct AICreditsApp: App {
         .defaultSize(width: 460, height: 430)
         .windowResizability(.contentSize)
 
+        Window("API 狀態與紀錄", id: "sync-status") {
+            SyncStatusView().environmentObject(store)
+        }
+        .defaultSize(width: 760, height: 680)
+
         Window("設定", id: "settings") {
             SettingsView().environmentObject(store)
         }

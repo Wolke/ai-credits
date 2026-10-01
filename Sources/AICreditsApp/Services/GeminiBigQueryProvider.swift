@@ -38,7 +38,7 @@ enum GoogleCloudError: LocalizedError {
 }
 
 struct GeminiBigQueryProvider: Sendable {
-    var session: URLSession = .shared
+    var client = BillingHTTPClient()
     var now: @Sendable () -> Date = { .now }
 
     func fetchUsage(serviceAccountJSON: String, billingTable: String, since: Date) async throws -> ProviderUsage {
@@ -88,7 +88,7 @@ struct GeminiBigQueryProvider: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=\(assertion.urlQueryEncoded)".data(using: .utf8)
-        let data = try await BillingHTTPClient(session: session).data(for: request)
+        let data = try await client.data(for: request)
         guard let result = try? JSONDecoder().decode(GoogleTokenResponse.self, from: data) else {
             throw GoogleCloudError.tokenFailed("Token 回應格式不正確")
         }
@@ -126,7 +126,7 @@ struct GeminiBigQueryProvider: Sendable {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
-        let data = try await BillingHTTPClient(session: session).data(for: request)
+        let data = try await client.data(for: request)
         return try Self.parseBillingResponse(data, fetchedAt: now())
     }
 
