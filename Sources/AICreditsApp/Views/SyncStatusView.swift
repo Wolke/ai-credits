@@ -105,15 +105,16 @@ struct ProviderStatusRow: View {
                 Image(systemName: status.symbol).foregroundStyle(status.color)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(platform.rawValue) · \(status.stateLabel)").font(.callout.bold())
+                Text("\(platform.rawValue) · API \(status.stateLabel)").font(.callout.bold())
                     .foregroundStyle(status.color)
                 Text(status.message).font(.caption)
                     .foregroundStyle(status.state == .failed ? Color.red : Color.secondary)
                 if platform.usesCostEstimates, let state = store.data.costSyncStates?[platform] {
-                    let remaining = store.currentEntries.filter {
-                        $0.platform == platform && $0.unit.caseInsensitiveCompare(state.currency) == .orderedSame
-                    }.reduce(Decimal.zero) { $0 + $1.remainingAmount }
-                    Text("帳面預估剩餘：\(remaining.formatted()) \(state.currency)").font(.caption.bold())
+                    if let summary = store.balanceSummaries.first(where: { $0.platform == platform && $0.currency == state.currency.uppercased() }) {
+                        PlatformBalanceBreakdown(summary: summary)
+                    } else {
+                        Text("尚無此幣別的已發放額度").font(.caption)
+                    }
                     if let proposal = store.reconciliation(for: platform) {
                         if proposal.entry.usesOriginalCostBalance {
                             Text("自動計算：原始額度 − API 累計花費")
@@ -123,7 +124,7 @@ struct ProviderStatusRow: View {
                                 .font(.caption).disabled(status.state == .syncing)
                         }
                     } else {
-                        Text("若有多筆額度或花費期間不同，請至「管理全部」依官方帳務頁逐筆校正餘額。")
+                        Text("多筆額度須按花費發生日期分攤；累計花費不能直接再扣到某一筆剩餘額度。")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
@@ -141,6 +142,40 @@ struct ProviderStatusRow: View {
         .sheet(item: $reconciliation) { proposal in
             BalanceReconciliationView(proposal: proposal)
         }
+    }
+}
+
+private struct PlatformBalanceBreakdown: View {
+    let summary: PlatformBalanceSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("有效額度合計（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
+                .font(.caption.bold())
+            if summary.availableEntries.count > 1 {
+                Text(summary.sumFormula).font(.caption.monospacedDigit())
+                ForEach(summary.availableEntries) { entry in
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(entry.expiresAt.formatted(date: .numeric, time: .omitted)) 到期 · \(entry.name.isEmpty ? "未命名額度" : entry.name)")
+                            Text("原始 \(entry.originalAmount.formatted()) \(entry.unit)").foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
+                        Text("本筆 \(entry.remainingAmount.formatted()) \(entry.unit)").monospacedDigit()
+                    }
+                    .font(.caption2)
+                }
+            }
+            if !summary.expiredEntries.isEmpty {
+                Text("另有 \(summary.expiredEntries.count) 筆已過期，未計入上述合計。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if summary.usesManualBaseline {
+                Text("餘額沿用手動基準，只扣後續新增花費；API 讀取成功不代表歷史餘額已核對。")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

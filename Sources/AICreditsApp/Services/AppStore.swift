@@ -71,6 +71,10 @@ final class AppStore: ObservableObject {
 
     var nearestEntry: CreditEntry? { currentEntries.first { $0.hasKnownExpiration } }
 
+    var balanceSummaries: [PlatformBalanceSummary] {
+        PlatformBalanceSummary.all(in: activeEntries)
+    }
+
     func upsert(_ entry: CreditEntry) {
         if let index = data.entries.firstIndex(where: { $0.id == entry.id }) {
             data.entries[index] = entry

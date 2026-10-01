@@ -5,6 +5,13 @@ struct ProviderUsage: Sendable {
     let cumulativeCost: Decimal
     let currency: String
     let fetchedAt: Date
+    var costBuckets: [CostBucket]?
+}
+
+struct CostBucket: Codable, Equatable, Sendable {
+    let start: Date
+    let end: Date
+    let cost: Decimal
 }
 
 protocol CreditProvider: Sendable {
@@ -96,6 +103,8 @@ struct OpenAIProvider: CreditProvider {
         var seenCursors = Set<String>()
         var total = Decimal.zero
         var currency: String?
+        var buckets: [CostBucket] = []
+        var completeBucketDates = true
         repeat {
             var components = URLComponents(string: "https://api.openai.com/v1/organization/costs")!
             components.queryItems = query + (cursor.map { [.init(name: "page", value: $0)] } ?? [])
@@ -103,20 +112,34 @@ struct OpenAIProvider: CreditProvider {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             let data = try await client.data(for: request)
             let page = try JSONDecoder().decode(OpenAICostPage.self, from: data)
-            for result in page.data.flatMap(\.results) {
-                let unit = result.amount.currency.uppercased()
-                guard currency == nil || currency == unit else { throw ProviderError.invalidResponse }
-                currency = unit
-                total += result.amount.value
+            for bucket in page.data {
+                var bucketCost = Decimal.zero
+                for result in bucket.results {
+                    let unit = result.amount.currency.uppercased()
+                    guard currency == nil || currency == unit else { throw ProviderError.invalidResponse }
+                    currency = unit
+                    bucketCost += result.amount.value
+                }
+                total += bucketCost
+                if let start = bucket.start_time, let end = bucket.end_time, start.isFinite, end.isFinite, end > start {
+                    buckets.append(CostBucket(start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end), cost: bucketCost))
+                } else {
+                    completeBucketDates = false
+                }
             }
             cursor = try nextCursor(hasMore: page.has_more, nextPage: page.next_page, seen: &seenCursors)
         } while cursor != nil
-        return ProviderUsage(platform: platform, cumulativeCost: total, currency: currency ?? "USD", fetchedAt: end)
+        return ProviderUsage(platform: platform, cumulativeCost: total, currency: currency ?? "USD", fetchedAt: end,
+                             costBuckets: completeBucketDates ? buckets.sorted { $0.start < $1.start } : nil)
     }
 }
 
 private struct OpenAICostPage: Decodable {
-    struct Bucket: Decodable { let results: [Result] }
+    struct Bucket: Decodable {
+        let start_time: TimeInterval?
+        let end_time: TimeInterval?
+        let results: [Result]
+    }
     struct Result: Decodable { let amount: Amount }
     struct Amount: Decodable { let value: Decimal; let currency: String }
     let data: [Bucket]

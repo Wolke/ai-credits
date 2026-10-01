@@ -24,6 +24,10 @@ struct CreditRow: View {
                     Text(expirationText)
                         .font(.caption)
                         .foregroundStyle(entry.urgency().color)
+                    if !entry.isAutomaticSubscription {
+                        Text("到期：\(entry.expiresAt.formatted(date: .numeric, time: .omitted))")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                     if let date = entry.lastSyncedAt {
                         Text("更新：\(date.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption2).foregroundStyle(.secondary)
@@ -37,7 +41,7 @@ struct CreditRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(entry.isAutomaticSubscription ? "API 剩餘" : (entry.platform.usesCostEstimates ? "預估剩餘" : "手動剩餘"))
+                Text(entry.isAutomaticSubscription ? "本筆 API 剩餘" : (entry.platform.usesCostEstimates ? "本筆預估剩餘" : "本筆手動剩餘"))
                     .font(.caption2).foregroundStyle(.secondary)
                 Text("\(entry.remainingAmount.formatted()) \(entry.unit)")
                     .monospacedDigit()

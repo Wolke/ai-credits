@@ -17,4 +17,5 @@ struct CostSyncState: Codable, Equatable, Sendable {
     var currency: String
     var fetchedAt: Date
     var source: String?
+    var costBuckets: [CostBucket]?
 }

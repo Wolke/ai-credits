@@ -26,9 +26,25 @@ struct MenuContentView: View {
                 ContentUnavailableView("尚無額度", systemImage: "creditcard", description: Text("新增第一筆贈送的 AI credits"))
                     .frame(height: 150)
             } else {
-                ForEach(store.currentEntries.prefix(5)) { entry in
-                    CreditRow(entry: entry)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(store.balanceSummaries.filter { !$0.availableEntries.isEmpty }) { summary in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("\(summary.platform.rawValue) 合計（\(summary.availableEntries.count) 筆）")
+                                    Spacer()
+                                    Text("\(summary.remaining.formatted()) \(summary.currency)").monospacedDigit()
+                                }
+                                .font(.caption.bold())
+                                ForEach(summary.availableEntries) { entry in
+                                    CreditRow(entry: entry)
+                                }
+                            }
+                            Divider()
+                        }
+                    }
                 }
+                .frame(maxHeight: 400)
             }
 
             Divider()

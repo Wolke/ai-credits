@@ -28,23 +28,29 @@ struct CreditsWindowView: View {
                     )
                 } else {
                     List {
-                        ForEach(displayedEntries) { entry in
-                            HStack {
-                                CreditRow(entry: entry)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { if !entry.isAutomaticSubscription { editingEntry = entry } }
-                                Button(role: .destructive) { deletingEntry = entry } label: {
-                                    Image(systemName: "trash")
+                        ForEach(store.balanceSummaries.filter { showingExpired || !$0.availableEntries.isEmpty }) { summary in
+                            Section {
+                                ForEach(showingExpired ? summary.entries : summary.availableEntries) { entry in
+                                    HStack {
+                                        CreditRow(entry: entry)
+                                            .contentShape(Rectangle())
+                                            .onTapGesture { if !entry.isAutomaticSubscription { editingEntry = entry } }
+                                        Button(role: .destructive) { deletingEntry = entry } label: {
+                                            Image(systemName: "trash")
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .help("永久刪除")
+                                    }
+                                    .contextMenu {
+                                        Button("編輯") { editingEntry = entry }
+                                            .disabled(entry.isAutomaticSubscription)
+                                        Button("封存") { store.archive(id: entry.id) }
+                                        Divider()
+                                        Button("永久刪除", role: .destructive) { deletingEntry = entry }
+                                    }
                                 }
-                                .buttonStyle(.borderless)
-                                .help("永久刪除")
-                            }
-                            .contextMenu {
-                                Button("編輯") { editingEntry = entry }
-                                    .disabled(entry.isAutomaticSubscription)
-                                Button("封存") { store.archive(id: entry.id) }
-                                Divider()
-                                Button("永久刪除", role: .destructive) { deletingEntry = entry }
+                            } header: {
+                                Text("\(summary.platform.rawValue) · 有效額度合計（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
                             }
                         }
                     }

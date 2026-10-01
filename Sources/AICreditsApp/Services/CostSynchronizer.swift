@@ -23,7 +23,7 @@ enum CostSynchronizer {
         if data.costSyncStates == nil { data.costSyncStates = [:] }
         data.costSyncStates?[usage.platform] = CostSyncState(
             since: since, cumulativeCost: baselineCost, currency: usage.currency,
-            fetchedAt: usage.fetchedAt, source: source
+            fetchedAt: usage.fetchedAt, source: source, costBuckets: usage.costBuckets
         )
         data.providerLastCosts[usage.platform] = usage.cumulativeCost
         if data.entries.contains(where: { $0.platform == usage.platform && !$0.isArchived && $0.usesOriginalCostBalance }) {

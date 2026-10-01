@@ -34,6 +34,31 @@ final class CreditProviderTests: XCTestCase {
         XCTAssertEqual(queries[1].first { $0.name == "page" }?.value, "next")
     }
 
+    func testOpenAIRetainsDailyCostsAcrossPagesForGrantPeriodAuditing() async throws {
+        let fixture = HTTPFixture([
+            .init(body: #"{"data":[{"start_time":1782720000,"end_time":1782806400,"results":[{"amount":{"value":1.25,"currency":"usd"}}]}],"has_more":true,"next_page":"next"}"#),
+            .init(body: #"{"data":[{"start_time":1782806400,"end_time":1782892800,"results":[{"amount":{"value":2.50,"currency":"usd"}}]}],"has_more":false}"#)
+        ])
+        let usage = try await OpenAIProvider(client: fixture.makeClient()).fetchUsage(apiKey: "test", since: Date(timeIntervalSince1970: 1782720000))
+        XCTAssertEqual(usage.costBuckets?.count, 2)
+        XCTAssertEqual(usage.costBuckets?.first?.start, Date(timeIntervalSince1970: 1782720000))
+        XCTAssertEqual(usage.costBuckets?.last?.end, Date(timeIntervalSince1970: 1782892800))
+        XCTAssertEqual(usage.costBuckets?.reduce(Decimal.zero) { $0 + $1.cost }, usage.cumulativeCost)
+        var data = AppData()
+        CostSynchronizer.apply(usage, since: Date(timeIntervalSince1970: 1782720000), source: nil, to: &data)
+        let restored = try JSONDecoder().decode(AppData.self, from: JSONEncoder().encode(data))
+        XCTAssertEqual(restored.costSyncStates?[.openAI]?.costBuckets, usage.costBuckets)
+    }
+
+    func testMissingDailyDatesDoNotPretendToProvideACompleteHistory() async throws {
+        let fixture = HTTPFixture([
+            .init(body: #"{"data":[{"results":[{"amount":{"value":10,"currency":"usd"}}]}],"has_more":false}"#)
+        ])
+        let usage = try await OpenAIProvider(client: fixture.makeClient()).fetchUsage(apiKey: "test", since: .now.addingTimeInterval(-86_400))
+        XCTAssertEqual(usage.cumulativeCost, 10)
+        XCTAssertNil(usage.costBuckets)
+    }
+
     func testRejectsMissingOrRepeatedPaginationCursor() async {
         for replies in [
             [HTTPFixture.Reply(body: #"{"data":[],"has_more":true}"#)],
