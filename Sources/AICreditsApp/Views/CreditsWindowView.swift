@@ -50,7 +50,7 @@ struct CreditsWindowView: View {
                                     }
                                 }
                             } header: {
-                                Text("\(summary.platform.rawValue) · 有效額度合計（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
+                                Text("\(summary.platform.rawValue) · \(summary.totalLabel)（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
                             }
                         }
                     }

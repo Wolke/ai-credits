@@ -40,7 +40,7 @@ struct CreditEditorView: View {
                         set: { entry.calculatesFromOriginal = $0 }
                     ))
                     Text(entry.usesOriginalCostBalance
-                         ? "剩餘 = 原始額度 − 取得日起的 API 累計花費。適用於此平台同幣別只有一筆額度，且原始額度涵蓋全部花費；儲存後立即使用現有資料重算，日期變更請重新同步。"
+                         ? "剩餘 = 原始額度 − 分攤花費。OpenAI 多筆額度須全部開啟，依花費日期先扣最早到期的額度；其他平台僅支援單筆完整額度。日期變更請重新同步。"
                          : "剩餘額度請填目前餘額；同步只扣之後新增的花費。若原始額度是最初取得的完整總額，請開啟自動計算。")
                         .font(.caption).foregroundStyle(.secondary)
                 }

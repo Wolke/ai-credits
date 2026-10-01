@@ -14,6 +14,8 @@ struct PlatformBalanceSummary: Identifiable {
     var expiredEntries: [CreditEntry] { entries.filter { !$0.isAutomaticSubscription && $0.daysUntilExpiration(now: now) < 0 } }
     var remaining: Decimal { availableEntries.reduce(0) { $0 + $1.remainingAmount } }
     var usesManualBaseline: Bool { platform.usesCostEstimates && availableEntries.contains { !$0.usesOriginalCostBalance } }
+    var hasPendingCalculation: Bool { availableEntries.contains(where: \.originalBalancePending) }
+    var totalLabel: String { hasPendingCalculation ? "上次餘額合計（待重算）" : "有效額度合計" }
     var sumFormula: String {
         availableEntries.map { $0.remainingAmount.formatted() }.joined(separator: " + ") + " = \(remaining.formatted()) \(currency)"
     }

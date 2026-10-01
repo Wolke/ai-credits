@@ -70,6 +70,7 @@ struct CreditEntry: Identifiable, Codable, Equatable, Sendable {
 
     var isAutomaticSubscription: Bool { isSubscriptionBalance == true }
     var usesOriginalCostBalance: Bool { platform.usesCostEstimates && calculatesFromOriginal == true }
+    var originalBalancePending: Bool { usesOriginalCostBalance && balanceFormula == nil }
     var balanceFormula: String? {
         guard usesOriginalCostBalance, let cost = syncBaselineCost,
               remainingAmount == max(0, originalAmount - cost) else { return nil }

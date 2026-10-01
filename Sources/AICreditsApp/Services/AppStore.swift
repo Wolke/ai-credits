@@ -125,7 +125,15 @@ final class AppStore: ObservableObject {
     }
 
     private func recalculateOriginalBalance(for platform: CreditPlatform) {
-        guard data.costSyncStates?[platform]?.source == billingSource(for: platform),
+        guard data.costSyncStates?[platform]?.source == billingSource(for: platform) else { return }
+        if let state = data.costSyncStates?[platform], HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: state.fetchedAt) {
+            if let calculation = try? HistoricalBalanceReconciliation.calculate(for: platform, in: data) {
+                calculation.apply(to: &data)
+                if providerStatuses[platform]?.state == .success { setStatus(.historical(calculation), for: platform) }
+            }
+            return
+        }
+        guard
               CostSynchronizer.recalculateOriginalBalance(for: platform, in: &data) != nil,
               let calculation = reconciliation(for: platform) else { return }
         // Recomputing cached data is not a new API success; retain any current connection error.
@@ -250,7 +258,13 @@ final class AppStore: ObservableObject {
                 let usage: ProviderUsage
                 switch platform {
                 case .openAI:
-                    usage = try await OpenAIProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
+                    let provider = OpenAIProvider(client: monitoredClient, now: now)
+                    if HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: now()) {
+                        let grants = HistoricalBalanceReconciliation.grants(for: platform, in: data, at: now())
+                        usage = try await provider.fetchUsage(apiKey: key, since: start, grantBoundaries: HistoricalBalanceReconciliation.boundaries(for: grants))
+                    } else {
+                        usage = try await provider.fetchUsage(apiKey: key, since: start)
+                    }
                 case .claude:
                     usage = try await ClaudeProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
                 case .gemini:
@@ -272,7 +286,10 @@ final class AppStore: ObservableObject {
                     !$0.isArchived && $0.platform == platform && $0.daysUntilExpiration(now: usage.fetchedAt) >= 0
                         && $0.receivedAt <= usage.fetchedAt && $0.unit.caseInsensitiveCompare(usage.currency) == .orderedSame
                 }
-                if data.entries.contains(where: { $0.platform == platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
+                if HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: usage.fetchedAt) {
+                    let calculation = try HistoricalBalanceReconciliation.calculate(for: platform, in: data)
+                    setStatus(.historical(calculation), for: platform)
+                } else if data.entries.contains(where: { $0.platform == platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
                     guard let calculation = reconciliation(for: platform), calculation.entry.usesOriginalCostBalance else {
                         setStatus(.failed("API 已讀取花費，但原始額度自動計算需要同期間、同幣別的單筆額度；此次未改動餘額。請檢查額度日期與計算方式。"), for: platform)
                         appendEvent(platform: platform, message: "額度計算未完成：多筆額度或花費期間不符")

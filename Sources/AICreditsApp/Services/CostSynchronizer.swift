@@ -2,6 +2,10 @@ import Foundation
 
 enum CostSynchronizer {
     static func startDate(for platform: CreditPlatform, in data: AppData, now: Date, source: String?) -> Date {
+        if HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: now),
+           let start = HistoricalBalanceReconciliation.grants(for: platform, in: data, at: now).map(HistoricalBalanceReconciliation.receiptBoundary).min() {
+            return start
+        }
         let grants = data.entries.filter { $0.platform == platform && $0.receivedAt <= now && !$0.isAutomaticSubscription }
         if grants.count == 1, let grant = grants.first, grant.usesOriginalCostBalance, !grant.isArchived {
             return grant.receivedAt
@@ -23,9 +27,15 @@ enum CostSynchronizer {
         if data.costSyncStates == nil { data.costSyncStates = [:] }
         data.costSyncStates?[usage.platform] = CostSyncState(
             since: since, cumulativeCost: baselineCost, currency: usage.currency,
-            fetchedAt: usage.fetchedAt, source: source, costBuckets: usage.costBuckets
+            fetchedAt: usage.fetchedAt, source: source, costBuckets: usage.costBuckets, allocationCosts: usage.allocationCosts
         )
         data.providerLastCosts[usage.platform] = usage.cumulativeCost
+        if HistoricalBalanceReconciliation.isEnabled(for: usage.platform, in: data, at: usage.fetchedAt) {
+            guard let calculation = try? HistoricalBalanceReconciliation.calculate(for: usage.platform, in: data) else { return 0 }
+            let previousRemaining = calculation.rows.reduce(Decimal.zero) { $0 + $1.entry.remainingAmount }
+            calculation.apply(to: &data)
+            return max(0, previousRemaining - calculation.rows.reduce(Decimal.zero) { $0 + $1.remaining })
+        }
         if data.entries.contains(where: { $0.platform == usage.platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
             return recalculateOriginalBalance(for: usage.platform, in: &data) ?? 0
         }

@@ -54,6 +54,14 @@ struct ProviderSyncStatus: Equatable, Codable, Sendable {
              message: "原始額度 − API 累計花費：\(calculation.entry.originalBalanceFormula(cost: calculation.cost))（\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .omitted))）；每次同步自動重算",
              cumulativeCost: calculation.cost, currency: calculation.state.currency, fetchedAt: calculation.state.fetchedAt)
     }
+
+    static func historical(_ calculation: HistoricalBalanceReconciliation) -> Self {
+        let total = calculation.rows.reduce(Decimal.zero) { $0 + $1.entry.originalAmount }
+        let uncovered = calculation.uncoveredCost > 0 ? " + 未由贈送額度支付 \(calculation.uncoveredCost.formatted())" : ""
+        return Self(state: .success,
+                    message: "依花費日期、先到期先扣估算（\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .shortened))）：原始總額 \(total.formatted()) − API 累計花費 \(calculation.cost.formatted()) − 過期未用 \(calculation.expiredUnused.formatted())\(uncovered) = 有效剩餘 \(calculation.remaining.formatted()) \(calculation.state.currency)；每次同步自動重算",
+                    cumulativeCost: calculation.cost, currency: calculation.state.currency, fetchedAt: calculation.state.fetchedAt)
+    }
 }
 
 extension ProviderSyncStatus {

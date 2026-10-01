@@ -31,7 +31,7 @@ struct MenuContentView: View {
                         ForEach(store.balanceSummaries.filter { !$0.availableEntries.isEmpty }) { summary in
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
-                                    Text("\(summary.platform.rawValue) 合計（\(summary.availableEntries.count) 筆）")
+                                    Text("\(summary.platform.rawValue) \(summary.totalLabel)（\(summary.availableEntries.count) 筆）")
                                     Spacer()
                                     Text("\(summary.remaining.formatted()) \(summary.currency)").monospacedDigit()
                                 }

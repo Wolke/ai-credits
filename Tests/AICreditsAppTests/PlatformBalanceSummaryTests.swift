@@ -46,4 +46,15 @@ final class PlatformBalanceSummaryTests: XCTestCase {
         XCTAssertEqual(summary.availableEntries.count, 8)
         XCTAssertEqual(summary.remaining, 80)
     }
+
+    func testEnablingOriginalModeDoesNotPresentOldBalancesAsRecalculated() throws {
+        var grant = entry(original: 5000, remaining: Decimal(string: "2199.92")!, expiresIn: 30)
+        grant.calculatesFromOriginal = true
+        var summary = try XCTUnwrap(PlatformBalanceSummary.all(in: [grant], now: now).first)
+        XCTAssertTrue(summary.hasPendingCalculation)
+        grant.remainingAmount = 868
+        grant.syncBaselineCost = 4132
+        summary = try XCTUnwrap(PlatformBalanceSummary.all(in: [grant], now: now).first)
+        XCTAssertFalse(summary.hasPendingCalculation)
+    }
 }

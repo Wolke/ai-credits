@@ -123,6 +123,9 @@ struct ProviderStatusRow: View {
                             Button("校正餘額並啟用自動計算…") { reconciliation = proposal }
                                 .font(.caption).disabled(status.state == .syncing)
                         }
+                    } else if HistoricalBalanceReconciliation.isEnabled(for: platform, in: store.data, at: state.fetchedAt) {
+                        Text("多筆自動計算：按取得／到期時間分段查詢花費，優先扣最早到期的額度。")
+                            .font(.caption2).foregroundStyle(.secondary)
                     } else {
                         Text("多筆額度須按花費發生日期分攤；累計花費不能直接再扣到某一筆剩餘額度。")
                             .font(.caption2).foregroundStyle(.secondary)
@@ -150,7 +153,7 @@ private struct PlatformBalanceBreakdown: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("有效額度合計（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
+            Text("\(summary.totalLabel)（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
                 .font(.caption.bold())
             if summary.availableEntries.count > 1 {
                 Text(summary.sumFormula).font(.caption.monospacedDigit())
@@ -158,7 +161,11 @@ private struct PlatformBalanceBreakdown: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(entry.expiresAt.formatted(date: .numeric, time: .omitted)) 到期 · \(entry.name.isEmpty ? "未命名額度" : entry.name)")
-                            Text("原始 \(entry.originalAmount.formatted()) \(entry.unit)").foregroundStyle(.secondary)
+                            if let formula = entry.balanceFormula {
+                                Text(formula).foregroundStyle(.secondary)
+                            } else {
+                                Text("原始 \(entry.originalAmount.formatted()) \(entry.unit)").foregroundStyle(.secondary)
+                            }
                         }
                         Spacer(minLength: 12)
                         Text("本筆 \(entry.remainingAmount.formatted()) \(entry.unit)").monospacedDigit()
@@ -170,7 +177,10 @@ private struct PlatformBalanceBreakdown: View {
                 Text("另有 \(summary.expiredEntries.count) 筆已過期，未計入上述合計。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
-            if summary.usesManualBaseline {
+            if summary.hasPendingCalculation {
+                Text("自動重算尚未完成，下列仍為上次餘額。請完成 API 同步以取得完整期間花費。")
+                    .font(.caption).foregroundStyle(.orange)
+            } else if summary.usesManualBaseline {
                 Text("餘額沿用手動基準，只扣後續新增花費；API 讀取成功不代表歷史餘額已核對。")
                     .font(.caption).foregroundStyle(.orange)
             }

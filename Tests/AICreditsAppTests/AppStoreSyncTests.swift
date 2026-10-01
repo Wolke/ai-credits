@@ -199,4 +199,22 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertThrowsError(try store.reconcile(proposal))
         XCTAssertEqual(store.data.entries[0].remainingAmount, 100)
     }
+
+    func testOpenAIRebuildsOriginalGrantsWithExpiredHistoryAndReportsFormula() async throws {
+        let fixture = HTTPFixture(["4131.312155995", "1000", "400", "2731.312155995"].map { cost in
+            .init(body: "{\"data\":[{\"results\":[{\"amount\":{\"value\":\(cost),\"currency\":\"usd\"}}]}],\"has_more\":false}")
+        })
+        let live = CreditEntry(platform: .openAI, originalAmount: 5000, remainingAmount: Decimal(string: "2199.92")!,
+            receivedAt: .now.addingTimeInterval(-4 * 86_400), expiresAt: .now.addingTimeInterval(90 * 86_400), calculatesFromOriginal: true)
+        let old = CreditEntry(platform: .openAI, originalAmount: 1200, remainingAmount: 1200,
+            receivedAt: .now.addingTimeInterval(-3 * 86_400), expiresAt: .now.addingTimeInterval(-2 * 86_400), calculatesFromOriginal: true)
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.openAI: "test"]), data: AppData(entries: [live, old]))
+        await store.refresh(platform: .openAI)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "1268.687844005"))
+        XCTAssertEqual(store.data.entries[1].remainingAmount, 800)
+        XCTAssertEqual(store.status(for: .openAI).state, .success)
+        XCTAssertTrue(store.status(for: .openAI).message.contains("過期未用 800"))
+        XCTAssertEqual(fixture.requests.count, 4)
+        XCTAssertEqual(store.data.costSyncStates?[.openAI]?.allocationCosts?.count, 3)
+    }
 }

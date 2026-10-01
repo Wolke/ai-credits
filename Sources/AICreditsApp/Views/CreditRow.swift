@@ -41,7 +41,7 @@ struct CreditRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(entry.isAutomaticSubscription ? "本筆 API 剩餘" : (entry.platform.usesCostEstimates ? "本筆預估剩餘" : "本筆手動剩餘"))
+                Text(entry.originalBalancePending ? "上次餘額（待重算）" : (entry.isAutomaticSubscription ? "本筆 API 剩餘" : (entry.platform.usesCostEstimates ? "本筆預估剩餘" : "本筆手動剩餘")))
                     .font(.caption2).foregroundStyle(.secondary)
                 Text("\(entry.remainingAmount.formatted()) \(entry.unit)")
                     .monospacedDigit()
