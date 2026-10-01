@@ -93,6 +93,26 @@ final class AppStore: ObservableObject {
         saveAndCheckNotifications()
     }
 
+    func reconciliation(for platform: CreditPlatform) -> BalanceReconciliation? {
+        guard data.costSyncStates?[platform]?.source == billingSource(for: platform) else { return nil }
+        return BalanceReconciliation.preview(for: platform, in: data)
+    }
+
+    func reconcile(_ proposal: BalanceReconciliation) throws {
+        guard refreshTasks[proposal.entry.platform] == nil,
+              reconciliation(for: proposal.entry.platform) == proposal else { throw ReconciliationError.changed }
+        var updated = data
+        try proposal.apply(to: &updated)
+        // Save before publishing, so a disk error cannot look like a completed correction.
+        try persistence.save(updated)
+        data = updated
+        if providerStatuses[proposal.entry.platform]?.state == .success {
+            providerStatuses[proposal.entry.platform]?.message = "已依原始總額校正帳面餘額；已計入花費 \(proposal.state.cumulativeCost.formatted()) \(proposal.state.currency)，校正後預估剩餘 \(proposal.remaining.formatted()) \(proposal.state.currency)"
+        }
+        appendEvent(platform: proposal.entry.platform, message: "已按原始總額校正：\(proposal.entry.originalAmount.formatted()) − \(proposal.state.cumulativeCost.formatted()) = \(proposal.remaining.formatted()) \(proposal.state.currency)；原帳面 \(proposal.entry.remainingAmount.formatted())")
+        saveAndCheckNotifications()
+    }
+
     func setAPIKey(_ key: String, for platform: CreditPlatform) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let previous = try keychain.get(for: platform, allowInteraction: true)
@@ -219,13 +239,13 @@ final class AppStore: ObservableObject {
                     return
                 }
                 let firstSync = data.costSyncStates?[platform] == nil || data.costSyncStates?[platform]?.source != source
-                CostSynchronizer.apply(usage, since: start, source: source, to: &data)
+                let deducted = CostSynchronizer.apply(usage, since: start, source: source, to: &data)
                 let hasEntry = data.entries.contains {
-                    !$0.isArchived && $0.platform == platform && $0.remainingAmount > 0
+                    !$0.isArchived && $0.platform == platform && $0.daysUntilExpiration(now: usage.fetchedAt) >= 0
                         && $0.receivedAt <= usage.fetchedAt && $0.unit.caseInsensitiveCompare(usage.currency) == .orderedSame
                 }
                 setStatus(.success(
-                    cost: usage.cumulativeCost, currency: usage.currency, date: usage.fetchedAt,
+                    cost: usage.cumulativeCost, currency: usage.currency, since: start, date: usage.fetchedAt, deducted: deducted,
                     needsCreditEntry: !hasEntry, firstSync: firstSync
                 ), for: platform)
             }

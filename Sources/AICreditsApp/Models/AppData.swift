@@ -11,7 +11,7 @@ struct AppData: Codable, Sendable {
     var syncEvents: [SyncEvent]?
 }
 
-struct CostSyncState: Codable, Sendable {
+struct CostSyncState: Codable, Equatable, Sendable {
     var since: Date
     var cumulativeCost: Decimal
     var currency: String

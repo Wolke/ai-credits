@@ -128,4 +128,36 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertEqual(store.currentEntries.count, 1)
         XCTAssertEqual(store.currentEntries[0].remainingAmount, 0)
     }
+
+    func testCorrectionIsLoggedAndNextAPIResponseOnlyDeductsNewSpend() async throws {
+        let start = Date.now.addingTimeInterval(-86_400)
+        let fixture = HTTPFixture([
+            .init(body: #"{"data":[{"results":[{"amount":"442581.02765"}]}],"has_more":false}"#),
+            .init(body: #"{"data":[{"results":[{"amount":"443581.02765"}]}],"has_more":false}"#)
+        ])
+        let entry = CreditEntry(platform: .claude, originalAmount: 5000, remainingAmount: 4968,
+            receivedAt: start, expiresAt: start.addingTimeInterval(86_400 * 90))
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.claude: "test"]), data: AppData(entries: [entry]))
+        await store.refresh(platform: .claude)
+        XCTAssertTrue(store.status(for: .claude).message.contains("尚未扣除歷史花費"))
+        let proposal = try XCTUnwrap(store.reconciliation(for: .claude))
+        try store.reconcile(proposal)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "574.1897235"))
+        XCTAssertFalse(store.status(for: .claude).message.contains("尚未扣除歷史花費"))
+        XCTAssertTrue(store.data.syncEvents?.last?.message.contains("已按原始總額校正") == true)
+        await store.refresh(platform: .claude)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "564.1897235"))
+        XCTAssertTrue(store.status(for: .claude).message.contains("本次從帳面扣除 10 USD"))
+    }
+
+    func testReplacingKeyRejectsOldBalanceCorrection() async throws {
+        let fixture = HTTPFixture([.init(body: #"{"data":[{"results":[{"amount":"2000"}]}],"has_more":false}"#)])
+        let entry = CreditEntry(platform: .claude, originalAmount: 100, remainingAmount: 100, receivedAt: .now.addingTimeInterval(-86_400))
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.claude: "test"]), data: AppData(entries: [entry]))
+        await store.refresh(platform: .claude)
+        let proposal = try XCTUnwrap(store.reconciliation(for: .claude))
+        try store.setAPIKey("different-account", for: .claude)
+        XCTAssertThrowsError(try store.reconcile(proposal))
+        XCTAssertEqual(store.data.entries[0].remainingAmount, 100)
+    }
 }

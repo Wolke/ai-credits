@@ -91,6 +91,8 @@ struct SyncStatusView: View {
 }
 
 struct ProviderStatusRow: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var reconciliation: BalanceReconciliation?
     let platform: CreditPlatform
     let status: ProviderSyncStatus?
 
@@ -107,6 +109,19 @@ struct ProviderStatusRow: View {
                     .foregroundStyle(status.color)
                 Text(status.message).font(.caption)
                     .foregroundStyle(status.state == .failed ? Color.red : Color.secondary)
+                if platform.usesCostEstimates, let state = store.data.costSyncStates?[platform] {
+                    let remaining = store.currentEntries.filter {
+                        $0.platform == platform && $0.unit.caseInsensitiveCompare(state.currency) == .orderedSame
+                    }.reduce(Decimal.zero) { $0 + $1.remainingAmount }
+                    Text("帳面預估剩餘：\(remaining.formatted()) \(state.currency)").font(.caption.bold())
+                    if let proposal = store.reconciliation(for: platform) {
+                        Button("校正餘額…") { reconciliation = proposal }
+                            .font(.caption).disabled(status.state == .syncing)
+                    } else {
+                        Text("若有多筆額度或花費期間不同，請至「管理全部」依官方帳務頁逐筆校正餘額。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
                 Text(status.requestSummary).font(.caption).foregroundStyle(.secondary)
                 if let date = status.attemptedAt {
                     Text("最近嘗試：\(date.formatted(date: .abbreviated, time: .standard))（\(status.trigger ?? "同步")）")
@@ -117,6 +132,9 @@ struct ProviderStatusRow: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
+        }
+        .sheet(item: $reconciliation) { proposal in
+            BalanceReconciliationView(proposal: proposal)
         }
     }
 }

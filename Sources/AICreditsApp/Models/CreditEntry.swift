@@ -21,6 +21,7 @@ enum CreditPlatform: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
     var supportsAutomaticSync: Bool { [.openAI, .claude, .gemini, .elevenLabs].contains(self) }
+    var usesCostEstimates: Bool { [.openAI, .claude, .gemini].contains(self) }
     var refreshInterval: TimeInterval { self == .gemini ? 6 * 60 * 60 : 15 * 60 }
     var credentialHint: String {
         switch self {

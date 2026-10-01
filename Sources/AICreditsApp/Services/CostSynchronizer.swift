@@ -8,7 +8,8 @@ enum CostSynchronizer {
             .map(\.receivedAt).min() ?? now.addingTimeInterval(-30 * 86_400)
     }
 
-    static func apply(_ usage: ProviderUsage, since: Date, source: String?, to data: inout AppData) {
+    @discardableResult
+    static func apply(_ usage: ProviderUsage, since: Date, source: String?, to data: inout AppData) -> Decimal {
         let previous = data.costSyncStates?[usage.platform]
         let comparable = previous?.since == since && previous?.currency == usage.currency && previous?.source == source
         // Legacy totals may contain only one API page. Rebaseline once without charging historical usage again.
@@ -21,7 +22,7 @@ enum CostSynchronizer {
             fetchedAt: usage.fetchedAt, source: source
         )
         data.providerLastCosts[usage.platform] = usage.cumulativeCost
-        CreditAllocator.deduct(delta, platform: usage.platform, currency: usage.currency, fetchedAt: usage.fetchedAt, from: &data.entries)
+        return CreditAllocator.deduct(delta, platform: usage.platform, currency: usage.currency, fetchedAt: usage.fetchedAt, from: &data.entries)
     }
 
     static func apply(_ balance: ElevenLabsBalance, to data: inout AppData) {

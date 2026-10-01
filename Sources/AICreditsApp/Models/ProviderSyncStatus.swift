@@ -38,11 +38,11 @@ struct ProviderSyncStatus: Equatable, Codable, Sendable {
     static func failed(_ message: String) -> Self {
         Self(state: .failed, message: message)
     }
-    static func success(cost: Decimal, currency: String, date: Date, needsCreditEntry: Bool, firstSync: Bool = false) -> Self {
-        let suffix = needsCreditEntry ? "；請新增目前剩餘額度與到期日" : (firstSync ? "；已建立基準，之後扣除新增花費" : "；剩餘額度已更新")
+    static func success(cost: Decimal, currency: String, since: Date, date: Date, deducted: Decimal, needsCreditEntry: Bool, firstSync: Bool = false) -> Self {
+        let suffix = needsCreditEntry ? "；尚無同幣別的有效額度，請新增目前剩餘額度與到期日" : (firstSync ? "；首次同步保留輸入的餘額，尚未扣除歷史花費" : "；餘額為本機估算值")
         return Self(
             state: .success,
-            message: "API 連線成功，追蹤期間花費 \(cost.formatted()) \(currency)\(suffix)",
+            message: "API 累計花費 \(cost.formatted()) \(currency)（\(since.formatted(date: .numeric, time: .omitted))～\(date.formatted(date: .numeric, time: .omitted))）；本次從帳面扣除 \(deducted.formatted()) \(currency)\(suffix)",
             cumulativeCost: cost,
             currency: currency,
             fetchedAt: date

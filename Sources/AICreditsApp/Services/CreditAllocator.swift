@@ -1,18 +1,20 @@
 import Foundation
 
 enum CreditAllocator {
+    @discardableResult
     static func deduct(
         _ amount: Decimal,
         platform: CreditPlatform,
         currency: String,
         fetchedAt: Date,
         from entries: inout [CreditEntry]
-    ) {
+    ) -> Decimal {
         var remainingCost = max(0, amount)
         let indices = entries.indices.filter {
             !entries[$0].isArchived && entries[$0].platform == platform
                 && entries[$0].remainingAmount > 0
                 && entries[$0].receivedAt <= fetchedAt
+                && entries[$0].daysUntilExpiration(now: fetchedAt) >= 0
                 && entries[$0].unit.caseInsensitiveCompare(currency) == .orderedSame
         }.sorted { entries[$0].expiresAt < entries[$1].expiresAt }
 
@@ -26,5 +28,6 @@ enum CreditAllocator {
             entries[index].lastSyncedAt = fetchedAt
             entries[index].syncBaselineAt = entries[index].syncBaselineAt ?? fetchedAt
         }
+        return max(0, amount) - remainingCost
     }
 }

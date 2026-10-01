@@ -2,6 +2,21 @@ import XCTest
 @testable import AICreditsApp
 
 final class CreditAllocatorTests: XCTestCase {
+    func testNewSpendSkipsExpiredCreditAndReportsActualDeduction() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let expired = CreditEntry(originalAmount: 1200, remainingAmount: 1200,
+            receivedAt: now.addingTimeInterval(-86_400 * 90), expiresAt: now.addingTimeInterval(-86_400 * 30))
+        let current = CreditEntry(originalAmount: 100, remainingAmount: 100,
+            receivedAt: now.addingTimeInterval(-86_400), expiresAt: now.addingTimeInterval(86_400))
+        var entries = [expired, current]
+        XCTAssertEqual(CreditAllocator.deduct(25, platform: .openAI, currency: "USD", fetchedAt: now, from: &entries), 25)
+        XCTAssertEqual(entries[0], expired)
+        XCTAssertEqual(entries[1].remainingAmount, 75)
+        XCTAssertEqual(CreditAllocator.deduct(100, platform: .openAI, currency: "USD", fetchedAt: now, from: &entries), 75)
+        XCTAssertEqual(entries[0], expired)
+        XCTAssertEqual(entries[1].remainingAmount, 0)
+    }
+
     func testDeductsEarliestExpirationFirst() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         var early = CreditEntry(platform: .openAI, name: "Early", originalAmount: 10, remainingAmount: 10, unit: "USD", receivedAt: now, expiresAt: now.addingTimeInterval(86_400), notes: "")

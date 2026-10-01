@@ -30,6 +30,10 @@ struct CreditEditorView: View {
                     Text("設定 API Key 可自動建立方案 credits 與重設時間；此處新增的額度為獨立手動紀錄。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                if entry.platform.usesCostEstimates {
+                    Text("「剩餘額度」請填官方帳務頁目前的餘額；「原始額度」不會自動扣除歷史花費。若要以原始總額重算，可在設定的「校正餘額」預覽計算。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 TextField("來源名稱（選填）", text: $entry.name, prompt: Text("例如：年度方案贈送"))
                 if isNewEntry {
                     Toggle("每月定期發放", isOn: $isMonthlySeries)
@@ -76,7 +80,7 @@ struct CreditEditorView: View {
                 }
             }
         }
-        .frame(width: 460, height: isMonthlySeries ? 520 : 430)
+        .frame(width: 460, height: isMonthlySeries ? 560 : 500)
     }
 }
 
