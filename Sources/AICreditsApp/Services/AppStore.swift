@@ -19,6 +19,8 @@ final class AppStore: ObservableObject {
     private var refreshTasks: [CreditPlatform: (revision: Int, source: String?, task: Task<Void, Never>)] = [:]
     private var credentialRevisions: [CreditPlatform: Int] = [:]
     private var lastAttempts: [CreditPlatform: Date] = [:]
+    // Reuse only the just-saved value for its immediate test, then return to Keychain reads.
+    private var pendingCredentials: [CreditPlatform: (value: String, expiresAt: Date)] = [:]
 
     init(
         persistence: PersistenceService = PersistenceService(),
@@ -115,12 +117,14 @@ final class AppStore: ObservableObject {
 
     func setAPIKey(_ key: String, for platform: CreditPlatform) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        let previous = try keychain.get(for: platform, allowInteraction: true)
+        // Comparing with the previous key is optional; never prompt just to compare.
+        let previous = try? keychain.get(for: platform, allowInteraction: false)
         if trimmed.isEmpty {
             try keychain.delete(for: platform)
         } else {
             try keychain.set(trimmed, for: platform)
         }
+        pendingCredentials[platform] = trimmed.isEmpty ? nil : (trimmed, now().addingTimeInterval(60))
         if trimmed != previous {
             credentialRevisions[platform, default: 0] += 1
             data.costSyncStates?[platform] = nil
@@ -194,7 +198,14 @@ final class AppStore: ObservableObject {
         }
         var credential = ""
         do {
-            guard let key = try keychain.get(for: platform, allowInteraction: allowInteraction), !key.isEmpty else {
+            let pendingKey = pendingCredentials.removeValue(forKey: platform)
+            let storedKey: String?
+            if let pendingKey, pendingKey.expiresAt > now() {
+                storedKey = pendingKey.value
+            } else {
+                storedKey = try keychain.get(for: platform, allowInteraction: allowInteraction)
+            }
+            guard let key = storedKey, !key.isEmpty else {
                 setStatus(.notConfigured(platform.credentialHint + "；未發起 API 請求"), for: platform)
                 appendEvent(platform: platform, message: "略過：" + platform.credentialHint + "；未發起 API 請求")
                 return

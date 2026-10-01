@@ -17,6 +17,6 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BUILD_ROOT/release/AICredits" "$CONTENTS/MacOS/AICredits"
 cp "$PROJECT_ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 cp "$PROJECT_ROOT/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
-codesign --force --deep --sign - --requirements '=designated => identifier "com.local.AICredits"' "$APP_ROOT"
+"$PROJECT_ROOT/Scripts/sign-app.sh" "$APP_ROOT"
 
 echo "$APP_ROOT"

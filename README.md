@@ -8,11 +8,22 @@
 
 ```bash
 swift test
+./Scripts/setup-signing.sh # 這台 Mac 首次封裝時執行一次
 ./Scripts/build-app.sh
 open "dist/AI Credits.app"
 ```
 
-封裝腳本會產生並臨時簽署 `dist/AI Credits.app`；結束舊版 App 後，將新版拖到「應用程式」即可日常使用。可用 Xcode 開啟 `Package.swift`。更新時請使用封裝腳本，維持相同的 App 識別碼與 Keychain 存取身分。
+封裝腳本會產生 `dist/AI Credits.app`；結束舊版 App 後，將完整新版拖到「應用程式」即可日常使用。可用 Xcode 開啟 `Package.swift`。1.6.3 起使用固定的本機簽署憑證及持續重用的鑰匙圈工具；不會默默退回臨時簽署。這個簽署方式供本機使用，公開發佈應改用 Apple Developer ID 與 notarization。
+
+### 更新後的鑰匙圈授權
+
+- 初次升級到 1.6.3 時，原有金鑰仍保留在登入鑰匙圈。背景同步需要授權時會顯示錯誤；按「立即測試」才會讓 macOS 顯示授權視窗。請允許 `AICreditsKeychain` 存取該平台金鑰，選「永遠允許」記住授權。原有每筆金鑰可能各需授權一次。
+- 金鑰工具只接受同一簽署憑證下的 AI Credits 呼叫，App 也會驗證工具簽署；金鑰透過私人管線傳送，不放入命令參數、環境變數或紀錄。背景讀取在工具程序內關閉 Keychain 互動，不影響主程式或其他 App。
+- 儲存金鑰前只做不彈窗的舊值比較；儲存成功後，立即測試會使用剛輸入的值一次（最多 60 秒），後續同步仍重新讀取 Keychain。清除金鑰會一併清除待測試值。
+- 本機簽署私鑰只存於登入鑰匙圈，限定 `/usr/bin/codesign` 使用。公開憑證、指紋及簽署完成的工具保存在 `~/Library/Application Support/AICredits/Signing`，不進 Git。請保留這個目錄；普通 App 更新會複製完全相同的工具，不會重新產生其身分。工具程式碼需要更新或此目錄被移除時，macOS 可能再次要求授權。
+- 僅固定自簽憑證還不夠：macOS 的 file-based Keychain 也會比對執行檔的 partition。因此保留工具的原始簽署位元組，並啟用 hardened runtime。
+
+可執行 `./Scripts/verify-signing.sh` 驗證兩個不同的已簽署 App 測試程式能沿用同一工具，在禁止授權 UI 的情況下寫入／讀取測試項目；未受信任的呼叫者必須遭拒。測試只使用 `SigningProbe` 帳號並於結束時清除，不存取 API 金鑰。
 
 ## 同步方式
 
