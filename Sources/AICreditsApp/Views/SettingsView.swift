@@ -32,7 +32,7 @@ struct SettingsView: View {
                 ProviderStatusRow(platform: .openAI, status: store.providerStatuses[.openAI])
                 SecureField("Claude Admin API Key（留空保留原值）", text: $claudeKey)
                 ProviderStatusRow(platform: .claude, status: store.providerStatuses[.claude])
-                Text("金鑰僅存於 macOS Keychain。每 15 分鐘讀取累計花費。API 花費與帳面剩餘是不同數字：首次同步保留手動餘額，之後只扣新增花費。若原始總額尚未扣除歷史花費，請使用「校正餘額」；這些帳務 API 不提供贈送額度到期日。")
+                Text("金鑰僅存於 macOS Keychain。OpenAI 與 Claude 每 15 分鐘更新花費。開啟自動計算的單筆額度會使用「原始額度 − API 累計花費」重算；手動餘額則只扣後續新增花費。這些帳務 API 不提供贈送額度到期日。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("儲存並測試金鑰") { saveKeys() }

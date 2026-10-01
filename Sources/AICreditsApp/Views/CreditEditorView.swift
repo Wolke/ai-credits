@@ -30,13 +30,19 @@ struct CreditEditorView: View {
                     Text("設定 API Key 可自動建立方案 credits 與重設時間；此處新增的額度為獨立手動紀錄。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if entry.platform.usesCostEstimates {
-                    Text("「剩餘額度」請填官方帳務頁目前的餘額；「原始額度」不會自動扣除歷史花費。若要以原始總額重算，可在設定的「校正餘額」預覽計算。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
                 TextField("來源名稱（選填）", text: $entry.name, prompt: Text("例如：年度方案贈送"))
                 if isNewEntry {
                     Toggle("每月定期發放", isOn: $isMonthlySeries)
+                }
+                if entry.platform.usesCostEstimates && !isMonthlySeries {
+                    Toggle("以原始額度自動計算餘額", isOn: Binding(
+                        get: { entry.usesOriginalCostBalance },
+                        set: { entry.calculatesFromOriginal = $0 }
+                    ))
+                    Text(entry.usesOriginalCostBalance
+                         ? "剩餘 = 原始額度 − 取得日起的 API 累計花費。適用於此平台同幣別只有一筆額度，且原始額度涵蓋全部花費；儲存後立即使用現有資料重算，日期變更請重新同步。"
+                         : "剩餘額度請填目前餘額；同步只扣之後新增的花費。若原始額度是最初取得的完整總額，請開啟自動計算。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if isMonthlySeries {
                     DecimalField("每月額度", value: $entry.originalAmount)
@@ -45,7 +51,9 @@ struct CreditEditorView: View {
                 } else {
                     HStack {
                         DecimalField("原始額度", value: $entry.originalAmount)
-                        DecimalField("剩餘額度", value: $entry.remainingAmount)
+                        if !entry.usesOriginalCostBalance {
+                            DecimalField("剩餘額度", value: $entry.remainingAmount)
+                        }
                     }
                 }
                 TextField("單位／幣別", text: $entry.unit)
@@ -80,7 +88,7 @@ struct CreditEditorView: View {
                 }
             }
         }
-        .frame(width: 460, height: isMonthlySeries ? 560 : 500)
+        .frame(width: 460, height: 580)
     }
 }
 

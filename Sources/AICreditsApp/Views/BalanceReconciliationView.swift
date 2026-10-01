@@ -9,13 +9,13 @@ struct BalanceReconciliationView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("以原始總額減去累計花費，重新計算這筆額度。")
+                Text("以原始總額減去 API 累計花費，校正餘額並啟用每次同步自動重算。")
                 Text("適用於「原始額度」是最初獲得的完整總額，且此期間的花費全部由這筆額度支付。若你輸入的是當時剩餘額度，請取消並依官方帳務頁編輯餘額。")
                     .font(.callout).foregroundStyle(.secondary)
                 GroupBox {
                     VStack(spacing: 10) {
                         LabeledContent("原始總額", value: amount(proposal.entry.originalAmount))
-                        LabeledContent("已計入累計花費", value: amount(proposal.state.cumulativeCost))
+                        LabeledContent("API 累計花費", value: amount(proposal.cost))
                         LabeledContent("目前帳面剩餘", value: amount(proposal.entry.remainingAmount))
                         Divider()
                         LabeledContent("校正後預估剩餘", value: amount(proposal.remaining)).bold()
@@ -23,7 +23,7 @@ struct BalanceReconciliationView: View {
                 }
                 Text("花費期間：\(proposal.state.since.formatted(date: .numeric, time: .shortened))～\(proposal.state.fetchedAt.formatted(date: .numeric, time: .shortened))")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("這是本機估算值。校正後只扣除新增花費，相同的 API 累計金額不會再次扣除。平台下修花費時，已計入花費會保留先前的較高值。")
+                Text("每次同步與重新開啟 App 都會以原始總額重算；重複刷新不會重複扣款。API 下修花費時，餘額也會修正。超過原始額度時，剩餘顯示為 0。")
                     .font(.caption).foregroundStyle(.secondary)
                 if let error { Text(error).foregroundStyle(.red) }
             }
@@ -32,7 +32,7 @@ struct BalanceReconciliationView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("以原始總額重算") {
+                    Button("校正並啟用自動計算") {
                         do {
                             try store.reconcile(proposal)
                             dismiss()

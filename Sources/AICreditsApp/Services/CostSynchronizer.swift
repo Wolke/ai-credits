@@ -2,6 +2,10 @@ import Foundation
 
 enum CostSynchronizer {
     static func startDate(for platform: CreditPlatform, in data: AppData, now: Date, source: String?) -> Date {
+        let grants = data.entries.filter { $0.platform == platform && $0.receivedAt <= now && !$0.isAutomaticSubscription }
+        if grants.count == 1, let grant = grants.first, grant.usesOriginalCostBalance, !grant.isArchived {
+            return grant.receivedAt
+        }
         if let state = data.costSyncStates?[platform], state.source == source { return state.since }
         // Once established, this start date stays fixed even when a grant is exhausted or removed.
         return data.entries.filter { !$0.isArchived && $0.platform == platform && $0.receivedAt <= now }
@@ -22,7 +26,18 @@ enum CostSynchronizer {
             fetchedAt: usage.fetchedAt, source: source
         )
         data.providerLastCosts[usage.platform] = usage.cumulativeCost
+        if data.entries.contains(where: { $0.platform == usage.platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
+            return recalculateOriginalBalance(for: usage.platform, in: &data) ?? 0
+        }
         return CreditAllocator.deduct(delta, platform: usage.platform, currency: usage.currency, fetchedAt: usage.fetchedAt, from: &data.entries)
+    }
+
+    @discardableResult
+    static func recalculateOriginalBalance(for platform: CreditPlatform, in data: inout AppData) -> Decimal? {
+        guard let calculation = BalanceReconciliation.preview(for: platform, in: data),
+              calculation.entry.usesOriginalCostBalance else { return nil }
+        do { try calculation.apply(to: &data) } catch { return nil }
+        return max(0, calculation.entry.remainingAmount - calculation.remaining)
     }
 
     static func apply(_ balance: ElevenLabsBalance, to data: inout AppData) {

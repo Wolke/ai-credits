@@ -48,6 +48,12 @@ struct ProviderSyncStatus: Equatable, Codable, Sendable {
             fetchedAt: date
         )
     }
+
+    static func calculated(_ calculation: BalanceReconciliation) -> Self {
+        Self(state: .success,
+             message: "原始額度 − API 累計花費：\(calculation.entry.originalBalanceFormula(cost: calculation.cost))（\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .omitted))）；每次同步自動重算",
+             cumulativeCost: calculation.cost, currency: calculation.state.currency, fetchedAt: calculation.state.fetchedAt)
+    }
 }
 
 extension ProviderSyncStatus {

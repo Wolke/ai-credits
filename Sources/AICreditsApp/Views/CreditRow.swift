@@ -28,6 +28,11 @@ struct CreditRow: View {
                         Text("更新：\(date.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    if let formula = entry.balanceFormula {
+                        Text(formula)
+                            .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             Spacer()

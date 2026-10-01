@@ -37,6 +37,10 @@ final class AppStore: ObservableObject {
         self.now = now
         self.data = (try? persistence.load()) ?? AppData()
         self.providerStatuses = data.providerSyncStatuses ?? [:]
+        let loadedEntries = data.entries
+        for platform in CreditPlatform.allCases where platform.usesCostEstimates {
+            recalculateOriginalBalance(for: platform)
+        }
         for platform in CreditPlatform.allCases where platform.supportsAutomaticSync {
             if providerStatuses[platform]?.state == .syncing {
                 providerStatuses[platform]?.state = .failed
@@ -45,6 +49,7 @@ final class AppStore: ObservableObject {
             }
         }
         if data.providerSyncStatuses != nil { updateRefreshError() }
+        if data.entries != loadedEntries { save() }
         if automaticallyRefresh { scheduleRefresh() }
     }
 
@@ -72,6 +77,7 @@ final class AppStore: ObservableObject {
         } else {
             data.entries.append(entry)
         }
+        recalculateOriginalBalance(for: entry.platform)
         saveAndCheckNotifications()
     }
 
@@ -92,6 +98,7 @@ final class AppStore: ObservableObject {
     func quickUpdate(id: UUID, remaining: Decimal) {
         guard let index = data.entries.firstIndex(where: { $0.id == id }) else { return }
         data.entries[index].remainingAmount = max(0, remaining)
+        data.entries[index].calculatesFromOriginal = false
         saveAndCheckNotifications()
     }
 
@@ -108,11 +115,17 @@ final class AppStore: ObservableObject {
         // Save before publishing, so a disk error cannot look like a completed correction.
         try persistence.save(updated)
         data = updated
-        if providerStatuses[proposal.entry.platform]?.state == .success {
-            providerStatuses[proposal.entry.platform]?.message = "已依原始總額校正帳面餘額；已計入花費 \(proposal.state.cumulativeCost.formatted()) \(proposal.state.currency)，校正後預估剩餘 \(proposal.remaining.formatted()) \(proposal.state.currency)"
-        }
-        appendEvent(platform: proposal.entry.platform, message: "已按原始總額校正：\(proposal.entry.originalAmount.formatted()) − \(proposal.state.cumulativeCost.formatted()) = \(proposal.remaining.formatted()) \(proposal.state.currency)；原帳面 \(proposal.entry.remainingAmount.formatted())")
+        recalculateOriginalBalance(for: proposal.entry.platform)
+        appendEvent(platform: proposal.entry.platform, message: "已按原始總額校正並啟用自動重算：\(proposal.entry.originalBalanceFormula(cost: proposal.cost))；原帳面 \(proposal.entry.remainingAmount.formatted())")
         saveAndCheckNotifications()
+    }
+
+    private func recalculateOriginalBalance(for platform: CreditPlatform) {
+        guard data.costSyncStates?[platform]?.source == billingSource(for: platform),
+              CostSynchronizer.recalculateOriginalBalance(for: platform, in: &data) != nil,
+              let calculation = reconciliation(for: platform) else { return }
+        // Recomputing cached data is not a new API success; retain any current connection error.
+        if providerStatuses[platform]?.state == .success { setStatus(.calculated(calculation), for: platform) }
     }
 
     func setAPIKey(_ key: String, for platform: CreditPlatform) throws {
@@ -255,10 +268,19 @@ final class AppStore: ObservableObject {
                     !$0.isArchived && $0.platform == platform && $0.daysUntilExpiration(now: usage.fetchedAt) >= 0
                         && $0.receivedAt <= usage.fetchedAt && $0.unit.caseInsensitiveCompare(usage.currency) == .orderedSame
                 }
-                setStatus(.success(
-                    cost: usage.cumulativeCost, currency: usage.currency, since: start, date: usage.fetchedAt, deducted: deducted,
-                    needsCreditEntry: !hasEntry, firstSync: firstSync
-                ), for: platform)
+                if data.entries.contains(where: { $0.platform == platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
+                    guard let calculation = reconciliation(for: platform), calculation.entry.usesOriginalCostBalance else {
+                        setStatus(.failed("API 已讀取花費，但原始額度自動計算需要同期間、同幣別的單筆額度；此次未改動餘額。請檢查額度日期與計算方式。"), for: platform)
+                        appendEvent(platform: platform, message: "額度計算未完成：多筆額度或花費期間不符")
+                        return
+                    }
+                    setStatus(.calculated(calculation), for: platform)
+                } else {
+                    setStatus(.success(
+                        cost: usage.cumulativeCost, currency: usage.currency, since: start, date: usage.fetchedAt, deducted: deducted,
+                        needsCreditEntry: !hasEntry, firstSync: firstSync
+                    ), for: platform)
+                }
             }
             data.lastRefreshAt = now()
             providerStatuses[platform]?.lastSuccessAt = now()

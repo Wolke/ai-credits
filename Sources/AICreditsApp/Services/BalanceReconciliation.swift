@@ -3,8 +3,9 @@ import Foundation
 struct BalanceReconciliation: Identifiable, Equatable {
     let entry: CreditEntry
     let state: CostSyncState
+    let cost: Decimal
     var id: UUID { entry.id }
-    var remaining: Decimal { max(0, entry.originalAmount - state.cumulativeCost) }
+    var remaining: Decimal { max(0, entry.originalAmount - cost) }
 
     static func preview(for platform: CreditPlatform, in data: AppData) -> Self? {
         guard platform.usesCostEstimates, let state = data.costSyncStates?[platform],
@@ -18,7 +19,7 @@ struct BalanceReconciliation: Identifiable, Equatable {
         guard grants.count == 1, let entry = grants.first, !entry.isArchived,
               entry.originalAmount >= 0, entry.receivedAt == state.since,
               entry.daysUntilExpiration(now: state.fetchedAt) >= 0 else { return nil }
-        return Self(entry: entry, state: state)
+        return Self(entry: entry, state: state, cost: max(0, data.providerLastCosts[platform] ?? state.cumulativeCost))
     }
 
     func apply(to data: inout AppData) throws {
@@ -27,10 +28,14 @@ struct BalanceReconciliation: Identifiable, Equatable {
             throw ReconciliationError.changed
         }
         data.entries[index].remainingAmount = remaining
+        data.entries[index].calculatesFromOriginal = true
         data.entries[index].syncBaselineAt = state.fetchedAt
-        data.entries[index].syncBaselineCost = state.cumulativeCost
+        data.entries[index].syncBaselineCost = cost
         data.entries[index].lastSyncedAt = state.fetchedAt
-        // Keep the cost high-water mark: the next identical API response must deduct nothing.
+        // This balance includes the latest total, including refunds. If switched back to
+        // manual mode, future deductions must start from this same total.
+        data.costSyncStates?[entry.platform]?.cumulativeCost = cost
+        // Subsequent refreshes recompute from the original grant, never from this remaining value.
     }
 }
 

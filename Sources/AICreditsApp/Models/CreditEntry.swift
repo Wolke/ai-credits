@@ -65,8 +65,22 @@ struct CreditEntry: Identifiable, Codable, Equatable, Sendable {
     // Optional fields keep existing credits.json files readable.
     var isSubscriptionBalance: Bool?
     var subscriptionResetsAt: Date?
+    // Explicitly distinguishes an original grant from an already-spent manual balance.
+    var calculatesFromOriginal: Bool?
 
     var isAutomaticSubscription: Bool { isSubscriptionBalance == true }
+    var usesOriginalCostBalance: Bool { platform.usesCostEstimates && calculatesFromOriginal == true }
+    var balanceFormula: String? {
+        guard usesOriginalCostBalance, let cost = syncBaselineCost,
+              remainingAmount == max(0, originalAmount - cost) else { return nil }
+        return originalBalanceFormula(cost: cost)
+    }
+
+    func originalBalanceFormula(cost: Decimal) -> String {
+        let difference = originalAmount - cost
+        let formula = "\(originalAmount.formatted()) − \(cost.formatted()) = \(difference.formatted()) \(unit)"
+        return difference < 0 ? formula + "（額度已用完，剩餘 0）" : formula
+    }
     var hasKnownExpiration: Bool { !isAutomaticSubscription || subscriptionResetsAt != nil }
 
     func daysUntilExpiration(now: Date = .now, calendar: Calendar = .current) -> Int {
@@ -104,6 +118,7 @@ extension CreditEntry {
             entry.receivedAt = receivedAt
             entry.expiresAt = expiresAt
             entry.remainingAmount = template.originalAmount
+            entry.calculatesFromOriginal = false
             return entry
         }
     }

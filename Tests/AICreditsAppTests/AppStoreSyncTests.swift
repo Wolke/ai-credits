@@ -129,7 +129,7 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertEqual(store.currentEntries[0].remainingAmount, 0)
     }
 
-    func testCorrectionIsLoggedAndNextAPIResponseOnlyDeductsNewSpend() async throws {
+    func testCorrectionIsLoggedAndEnablesAutomaticOriginalBalance() async throws {
         let start = Date.now.addingTimeInterval(-86_400)
         let fixture = HTTPFixture([
             .init(body: #"{"data":[{"results":[{"amount":"442581.02765"}]}],"has_more":false}"#),
@@ -147,7 +147,46 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertTrue(store.data.syncEvents?.last?.message.contains("已按原始總額校正") == true)
         await store.refresh(platform: .claude)
         XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "564.1897235"))
-        XCTAssertTrue(store.status(for: .claude).message.contains("本次從帳面扣除 10 USD"))
+        XCTAssertTrue(store.status(for: .claude).message.contains("每次同步自動重算"))
+        XCTAssertTrue(store.data.entries[0].usesOriginalCostBalance)
+    }
+
+    func testOriginalBalanceLoadsCorrectlyWithoutAWorkingAPIAndRecalculatesEdits() throws {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let entry = CreditEntry(platform: .claude, originalAmount: 5000, remainingAmount: 4968,
+            receivedAt: start, expiresAt: start.addingTimeInterval(86_400 * 90), calculatesFromOriginal: true)
+        let data = AppData(entries: [entry], providerLastCosts: [.claude: 4428],
+            costSyncStates: [.claude: CostSyncState(since: start, cumulativeCost: 4500, currency: "USD", fetchedAt: start.addingTimeInterval(60))],
+            providerSyncStatuses: [.claude: .failed("上次連線失敗")])
+        let fixture = HTTPFixture([])
+        let store = try store(fixture: fixture, credentials: MemoryCredentials(), data: data)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, 572)
+        XCTAssertTrue(fixture.requests.isEmpty)
+        XCTAssertEqual(store.status(for: .claude).state, .failed, "Cached calculation must not hide connection errors")
+        let disk = try PersistenceService(fileURL: directories.last!.appending(path: "credits.json")).load()
+        XCTAssertEqual(disk.entries[0].remainingAmount, 572)
+        var edited = store.data.entries[0]
+        edited.originalAmount = 6000
+        store.upsert(edited)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, 1572)
+    }
+
+    func testFirstAPIResponseCalculatesFromOriginalAndFailuresPreserveIt() async throws {
+        let fixture = HTTPFixture([
+            .init(body: #"{"data":[{"results":[{"amount":"442800"}]}],"has_more":false}"#),
+            .init(status: 401, body: #"{"error":{"message":"not authorized"}}"#)
+        ])
+        let entry = CreditEntry(platform: .claude, originalAmount: 5000, remainingAmount: 4968,
+            receivedAt: .now.addingTimeInterval(-86_400), calculatesFromOriginal: true)
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.claude: "test"]), data: AppData(entries: [entry]))
+        await store.refresh(platform: .claude)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, 572)
+        XCTAssertTrue(store.status(for: .claude).message.contains("每次同步自動重算"))
+        let success = store.status(for: .claude).lastSuccessAt
+        await store.refresh(platform: .claude)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, 572)
+        XCTAssertEqual(store.status(for: .claude).state, .failed)
+        XCTAssertEqual(store.status(for: .claude).lastSuccessAt, success)
     }
 
     func testReplacingKeyRejectsOldBalanceCorrection() async throws {

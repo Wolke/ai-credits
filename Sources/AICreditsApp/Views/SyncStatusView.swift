@@ -115,8 +115,13 @@ struct ProviderStatusRow: View {
                     }.reduce(Decimal.zero) { $0 + $1.remainingAmount }
                     Text("帳面預估剩餘：\(remaining.formatted()) \(state.currency)").font(.caption.bold())
                     if let proposal = store.reconciliation(for: platform) {
-                        Button("校正餘額…") { reconciliation = proposal }
-                            .font(.caption).disabled(status.state == .syncing)
+                        if proposal.entry.usesOriginalCostBalance {
+                            Text("自動計算：原始額度 − API 累計花費")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        } else {
+                            Button("校正餘額並啟用自動計算…") { reconciliation = proposal }
+                                .font(.caption).disabled(status.state == .syncing)
+                        }
                     } else {
                         Text("若有多筆額度或花費期間不同，請至「管理全部」依官方帳務頁逐筆校正餘額。")
                             .font(.caption2).foregroundStyle(.secondary)
