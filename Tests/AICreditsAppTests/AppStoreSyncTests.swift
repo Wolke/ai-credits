@@ -7,14 +7,10 @@ import Combine
 final class AppStoreSyncTests: XCTestCase {
     private var directories: [URL] = []
 
-    override func tearDown() {
-        for directory in directories { try? FileManager.default.removeItem(at: directory) }
-        directories = []
-    }
-
     private func store(fixture: HTTPFixture, credentials: MemoryCredentials, data: AppData = AppData(), automaticallyRefresh: Bool = false) throws -> AppStore {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         directories.append(directory)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let persistence = PersistenceService(fileURL: directory.appending(path: "credits.json"))
         try persistence.save(data)
         return AppStore(persistence: persistence, keychain: credentials, client: fixture.makeClient(), automaticallyRefresh: automaticallyRefresh)

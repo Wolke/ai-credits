@@ -5,15 +5,9 @@ import Security
 
 @MainActor
 final class SyncDiagnosticsTests: XCTestCase {
-    private var directories: [URL] = []
-    override func tearDown() {
-        for directory in directories { try? FileManager.default.removeItem(at: directory) }
-        directories = []
-    }
-
     private func persistence() -> PersistenceService {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        directories.append(directory)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         return PersistenceService(fileURL: directory.appending(path: "credits.json"))
     }
 
