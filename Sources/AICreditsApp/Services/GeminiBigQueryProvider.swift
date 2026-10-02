@@ -38,13 +38,15 @@ enum GoogleCloudError: LocalizedError {
 }
 
 struct GeminiBigQueryProvider: Sendable {
+    private static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
     var client = BillingHTTPClient()
     var now: @Sendable () -> Date = { .now }
 
     func fetchUsage(serviceAccountJSON: String, billingTable: String, since: Date) async throws -> ProviderUsage {
         guard let accountData = serviceAccountJSON.data(using: .utf8),
               let account = try? JSONDecoder().decode(GoogleServiceAccount.self, from: accountData),
-              !account.projectID.isEmpty, !account.clientEmail.isEmpty else {
+              !account.projectID.isEmpty, !account.clientEmail.isEmpty,
+              account.tokenURI == Self.tokenEndpoint.absoluteString else {
             throw GoogleCloudError.invalidServiceAccount
         }
         let table = billingTable.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,7 +65,7 @@ struct GeminiBigQueryProvider: Sendable {
         let payload: [String: Any] = [
             "iss": account.clientEmail,
             "scope": "https://www.googleapis.com/auth/bigquery.readonly https://www.googleapis.com/auth/cloud-platform.read-only",
-            "aud": account.tokenURI,
+            "aud": Self.tokenEndpoint.absoluteString,
             "iat": issuedAt,
             "exp": issuedAt + 3600
         ]
@@ -84,7 +86,8 @@ struct GeminiBigQueryProvider: Sendable {
             throw GoogleCloudError.tokenFailed(signingError?.takeRetainedValue().localizedDescription ?? "JWT 簽署失敗")
         }
         let assertion = "\(signingInput).\(signature.base64URL)"
-        var request = URLRequest(url: URL(string: account.tokenURI)!)
+        // Imported JSON must never redirect a signed assertion to another host.
+        var request = URLRequest(url: Self.tokenEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=\(assertion.urlQueryEncoded)".data(using: .utf8)

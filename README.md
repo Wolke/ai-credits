@@ -1,108 +1,86 @@
+<p align="center">
+  <img src="Resources/AppIcon.svg" width="96" alt="AI Credits icon">
+</p>
+
 # AI Credits
 
-原生 macOS 14+ 選單列 App，追蹤 OpenAI、Claude、Gemini、ElevenLabs、Lovable 與 Notion 的剩餘額度、到期日及方案重設時間。
+**把 AI 額度與到期日放在 Mac 選單列。**
 
-## 開發與封裝
+A native macOS menu bar app for AI credit balances, cost estimates, and expiry reminders. Built with SwiftUI. Free and open source under the MIT license.
 
-需要 Xcode / Command Line Tools 與 Swift 6：
+[![CI](https://github.com/Wolke/ai-credits/actions/workflows/ci.yml/badge.svg)](https://github.com/Wolke/ai-credits/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black.svg)
+![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)
+
+不用逐一打開帳務後台，點一下選單列，就能查看各平台的有效額度合計、每筆餘額及剩餘天數。介面目前以繁體中文為主。
+
+<p align="center">
+  <img src="docs/images/menu-preview.png" width="420" alt="AI Credits 選單列：示範額度、餘額、到期天數與同步紀錄入口">
+</p>
+<p align="center"><em>畫面使用虛構示範資料，非真實帳戶或官方價格。</em></p>
+
+## 能做什麼
+
+- 在選單列直接看餘額、各筆額度與到期日，捲動即可查看全部。
+- 追蹤一次性贈送額度，也能建立每月發放的額度紀錄。
+- 讀取 OpenAI／Claude 的組織 API 花費，或 Gemini 的 Google Cloud 帳務資料，估算剩餘額度。
+- 讀取 ElevenLabs 方案 credits 與重設時間；可自行設定比例換算預估 USD。
+- 到期前 30、7、1 天及到期當天通知提醒；通知需獲得 macOS 授權且 App 正在執行。
+- 顯示每次同步的成功／失敗、HTTP 請求次數、錯誤原因及最近成功時間。
+- 資料留在自己的 Mac，金鑰存於 macOS Keychain，沒有專案自建的後端或遙測。
+
+## 支援哪些平台
+
+| 平台 | 自動取得 | 需要自行設定 |
+| --- | --- | --- |
+| OpenAI | 組織 API 花費 | Admin API Key、原始／目前額度、取得日、到期日 |
+| Claude | 組織 API 花費 | Admin API Key、原始／目前額度、取得日、到期日 |
+| Gemini | BigQuery 帳務匯出的 Gemini gross cost | Service Account、表名、額度與日期 |
+| ElevenLabs | 方案總 credits、已使用量、剩餘量、API 提供的重設時間 | User → Read 金鑰；USD 換算比例為選填 |
+| Lovable、Notion | 手動管理 | 額度、單位、日期與使用後的餘額 |
+
+**OpenAI／Claude／Gemini 顯示的是本機預估餘額。** 本專案使用的 API 不會自動填入原始贈送額度與到期日，也不追蹤 ChatGPT／Claude 網頁訂閱的訊息配額。各平台的花費期間、折抵方式與資料延遲可能造成差異；請參閱[計算規則與平台設定](docs/PROVIDERS.md)。
+
+## 安裝
+
+目前提供**從原始碼在自己的 Mac 編譯安裝**。尚未提供經 Apple Developer ID 簽署、公證的可下載安裝包。
+
+需要 **macOS 14+、Swift 6+、Git**。先安裝適合自己 macOS 版本的 Xcode 或 Command Line Tools，執行 `swift --version` 確認版本；詳細步驟見[安裝指南](docs/INSTALL.md)。
 
 ```bash
-swift test
-./Scripts/setup-signing.sh # 這台 Mac 首次封裝時執行一次
-./Scripts/build-app.sh
-open "dist/AI Credits.app"
+git clone https://github.com/Wolke/ai-credits.git
+cd ai-credits
+./Scripts/install.sh
 ```
 
-封裝腳本會產生 `dist/AI Credits.app`；結束舊版 App 後，將完整新版拖到「應用程式」即可日常使用。可用 Xcode 開啟 `Package.swift`。1.6.3 起使用固定的本機簽署憑證及持續重用的鑰匙圈工具；不會默默退回臨時簽署。這個簽署方式供本機使用，公開發佈應改用 Apple Developer ID 與 notarization。
+腳本會建立／沿用本機簽署身分、編譯及安裝 App，預設放在 `~/Applications`。若 `/Applications` 已有 AI Credits，則更新該位置。全程以自己的使用者帳號執行，**不需要 sudo**。
 
-### 更新後的鑰匙圈授權
+首次簽署或讀取金鑰時，macOS 可能要求授權。請依系統視窗確認 `codesign`／`AICreditsKeychain` 的存取；後續更新會沿用相同的簽署身分與金鑰工具。[安裝、更新、移除及授權說明](docs/INSTALL.md)
 
-- 初次升級到 1.6.3 時，原有金鑰仍保留在登入鑰匙圈。背景同步需要授權時會顯示錯誤；按「立即測試」才會讓 macOS 顯示授權視窗。請允許 `AICreditsKeychain` 存取該平台金鑰，選「永遠允許」記住授權。原有每筆金鑰可能各需授權一次。
-- 金鑰工具只接受同一簽署憑證下的 AI Credits 呼叫，App 也會驗證工具簽署；金鑰透過私人管線傳送，不放入命令參數、環境變數或紀錄。背景讀取在工具程序內關閉 Keychain 互動，不影響主程式或其他 App。
-- 儲存金鑰前只做不彈窗的舊值比較；儲存成功後，立即測試會使用剛輸入的值一次（最多 60 秒），後續同步仍重新讀取 Keychain。清除金鑰會一併清除待測試值。
-- 本機簽署私鑰只存於登入鑰匙圈，限定 `/usr/bin/codesign` 使用。公開憑證、指紋及簽署完成的工具保存在 `~/Library/Application Support/AICredits/Signing`，不進 Git。請保留這個目錄；普通 App 更新會複製完全相同的工具，不會重新產生其身分。工具程式碼需要更新或此目錄被移除時，macOS 可能再次要求授權。
-- 僅固定自簽憑證還不夠：macOS 的 file-based Keychain 也會比對執行檔的 partition。因此保留工具的原始簽署位元組，並啟用 hardened runtime。
+## 第一次使用
 
-可執行 `./Scripts/verify-signing.sh` 驗證兩個不同的已簽署 App 測試程式能沿用同一工具，在禁止授權 UI 的情況下寫入／讀取測試項目；未受信任的呼叫者必須遭拒。測試只使用 `SigningProbe` 帳號並於結束時清除，不存取 API 金鑰。
+1. 打開 AI Credits，點選 macOS 右上角選單列的信用卡圖示。
+2. OpenAI、Claude、Gemini、Lovable、Notion：按「新增額度」，填寫額度、單位及日期。
+3. 需要自動同步的平台，在「設定」輸入對應金鑰並按「儲存並測試」。ElevenLabs 測試成功後會自動建立方案額度。
+4. 選擇餘額模式：已知完整原始額度及花費期間時使用「以原始額度自動計算餘額」；若輸入的是目前剩餘額度，使用手動基準模式。
+5. 展開「API 同步狀態」或按「查看紀錄」，確認有實際 HTTP 請求與最近成功時間。
 
-## 同步方式
+OpenAI、Claude、ElevenLabs 每 15 分鐘檢查一次，Gemini 每 6 小時查詢一次；也能手動同步。API 失敗時保留上次數字並顯示錯誤。
 
-| 平台 | 設定 | 同步內容 |
-| --- | --- | --- |
-| OpenAI | Admin API Key | 組織累計 API 花費，換算為手動額度的剩餘量 |
-| Claude | Admin API Key | 組織累計 API 花費，換算為手動額度的剩餘量 |
-| Gemini | Google Service Account JSON、Billing Export 表名 | Google Cloud 帳務中的 Gemini gross cost |
-| ElevenLabs | 具有使用者讀取權限的 API Key | 方案總 credits、已使用量、剩餘量及下次重設時間 |
-| Lovable、Notion | 不需金鑰 | 手動更新 |
+## 文件與參與
 
-App 啟動即同步；OpenAI、Claude、ElevenLabs 每 15 分鐘更新，Gemini 每 6 小時查詢一次。Mac 喚醒或開啟選單／設定時，也會檢查是否需要更新。按「立即同步」可略過更新間隔。網路中斷、429 或伺服器暫時錯誤最多嘗試 3 次；無效金鑰／權限錯誤會顯示原因。
+- [安裝、更新與常見問題](docs/INSTALL.md)
+- [API 權限、計算規則與限制](docs/PROVIDERS.md)
+- [資料儲存與隱私](docs/PRIVACY.md)
+- [開發、測試與簽署](docs/DEVELOPMENT.md)
+- [貢獻指南](CONTRIBUTING.md) · [安全問題回報](SECURITY.md) · [版本紀錄](CHANGELOG.md)
+- [Facebook 分享文案](docs/FACEBOOK_POST.md)
 
-### OpenAI／Claude／Gemini 的額度與到期日
+遇到問題或有功能想法，歡迎[開 Issue](https://github.com/Wolke/ai-credits/issues)。分享截圖或紀錄前，請先遮掉帳戶名稱、金鑰與不想公開的帳務資料。
 
-這裡使用的帳務 API 回傳「花費」，並非贈送 credits 的餘額與到期日。請先新增額度、幣別及到期日。單筆完整額度可開啟「以原始額度自動計算餘額」，每次同步都用原始額度減去取得日起的 API 累計花費；例如 5,000 − 4,428 = 572 USD。平台帳務可能有延遲，畫面上的剩餘量為估算值。
+## 授權
 
-1.6.2 起，額度卡片標示「預估剩餘」，同步結果分開顯示 API 累計花費、花費期間、本次實際扣除與帳面剩餘。新花費不會再扣到已過期的額度。
+[MIT License](LICENSE) © 2026 Wolke。歡迎使用、修改與分享，請保留授權與著作權聲明。
 
-1.6.5 起，設定、選單與管理視窗共用「平台／幣別」合計，列出每筆餘額與到期日。例如 OpenAI 的 7,449.92 USD 是 2,199.92 + 5,000 + 250 三筆有效額度的合計；卡片上的 2,199.92 僅指其中一筆。已過期、未發放、封存及不同幣別的額度不會混入合計。選單可捲動查看全部明細，不再只顯示前五筆。
-
-API 讀取成功不代表手動餘額已完成核對，介面會分開說明。[OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs) 提供期間花費，App 會讀取完整分頁並保存日別金額。原始發放額度與到期日仍須手動輸入。
-
-1.6.7 起，OpenAI 原始額度模式採用「目前未到期的原始額度總額 − 從最早有效額度取得日至今的累計花費」。只計入已發放、未封存、未到期的額度；剩餘為零但仍未到期的額度仍屬於原始總額。重疊期間的花費只扣一次，已過期額度不加入總額，也不抵扣這段期間的花費。各筆顯示值按到期順序分攤，總和等於計算結果，最低為零。這是指定規則下的本機估算，並非官方 credit 發放或扣款明細。
-
-例如有效原始額度為 5,000 + 5,000 + 250 = 10,250 USD、同期間 API 累計花費 4,131.312155995 USD，預估有效剩餘為 6,118.687844005 USD；最早到期那筆剩餘 868.687844005 USD，其餘為 5,000 和 250。即使有已到期的 1,200 USD 紀錄，也不加入這次計算。
-
-所有有效 OpenAI 額度開啟「以原始額度自動計算餘額」後，啟動、編輯與同步會從原始值重算，重複執行不會重複扣款。已儲存的 API 花費期間符合時，可在連線失敗時先重算，但保留 API 失敗狀態與原資料更新時間。最早有效額度到期、刪除、封存或取得日期變更而使起算日不同時，必須重新取得對應期間的花費；舊值會標示「上次餘額（待重算）」。手動基準模式不會自動切換。
-
-1.6.4 起，原始額度自動計算會持續生效：啟動時先以已儲存的花費重算，成功同步後套用最新花費，編輯原始額度也立即重算。主畫面會列出計算式，重複刷新不會重複扣款；API 下修花費時也會修正餘額，花費超過原始額度則剩餘為 0。Claude、Gemini 的單筆模式需要平台同幣別只有一筆額度、取得日等於花費查詢起點，且原始額度涵蓋全部花費。修改取得日後需重新同步；多筆額度或期間不符時會顯示計算錯誤並保留餘額。
-
-既有手動餘額可在「設定／API 狀態 → 校正餘額並啟用自動計算」預覽。例如原始 5,000 USD、API 累計 4,425.81 USD，會校正為約 574.19 USD，並持續自動計算。若原始數字本身是已扣除花費的餘額，或有多筆不同期間的贈送額度，請使用手動餘額模式，依官方帳務頁輸入目前餘額。手動模式首次同步保留輸入的餘額，之後按到期日順序扣除同幣別的新增花費。
-
-OpenAI／Claude 會讀取全部分頁。原始額度自動計算從取得日查詢；手動模式的查詢起點會持久保存，不因額度用完或刪除而改變。手動模式更換帳號金鑰或 Gemini 表名後會重新建立基準，且平台下修累計花費時保留先前較高的扣款基準，避免之後重複扣款。
-
-金鑰只代表 API 組織帳務，不代表 ChatGPT／Claude 聊天訂閱的訊息配額。到期天數依自行設定的日期計算，每分鐘更新畫面，不依賴 API 成功與否。
-
-### ElevenLabs credits 與 USD 換算
-
-1. 在 ElevenLabs 建立可讀取使用者資料的 API Key，在 Developers → API Keys 的權限中將 User 設為 Read（`user_read`）；不需要 Text to Speech、Voices 或寫入權限。
-2. 到 App「設定 → ElevenLabs credits／USD」貼上金鑰，按「儲存並測試 ElevenLabs」。
-3. App 自動建立方案額度；之後更新同一筆紀錄，跨期時套用新的總額度、剩餘量與重設時間。
-
-剩餘 credits = `max(0, character_limit - character_count)`。重設時間取自 `next_character_count_reset_unix`，是方案重設時間；若 API 沒提供就顯示「未提供重設時間」。用完的方案仍會顯示，方便查看重設狀態。方案額度由 API 管理；手動新增的 ElevenLabs 額度保持獨立。刪除或封存自動方案後，下次同步會重新建立；清除金鑰可停止同步，並保留最後一次紀錄。
-
-1.6.8 起，可在同一區塊的「美元換算」填入「基準 credits」與「對應 USD」，例如依贈送方案的原始價值或帳單設定比例。預估美元 = 剩餘 credits × 基準 USD ÷ 基準 credits。選單、管理頁與設定同步顯示「≈ … USD」，並保留原始 credits。這是手動比例下的估值，不是 API 回報的美元餘額，沒有設定時不猜測價格。API 更新或 credits 重設不會覆寫換算比例；更換／清除 ElevenLabs 金鑰時會清除比例，避免套用到其他帳號。方案價格改變後需自行更新比例，也可隨時恢復只顯示 credits。
-
-ElevenLabs 各方案的 credit-to-dollar 比例不同，Grant 不應直接套用一般訂閱價格或把帳單應付金額當成額度價值。官方說明：[Pay As You Go](https://elevenlabs.io/docs/overview/administration/pay-as-you-go)。
-
-### Gemini Google Cloud Billing
-
-1. 在 Google Cloud Billing 啟用 Standard usage cost 的 BigQuery export。
-2. 建立 Service Account，授予執行專案 `BigQuery Job User`，並在 export dataset 授予 `BigQuery Data Viewer`。
-3. 建立並下載該 Service Account 的 JSON key。
-4. 在 AI Credits 設定頁輸入完整表名（`project.dataset.gcp_billing_export_v1_...`）並匯入 JSON。
-
-App 每 6 小時查詢 Gemini／Generative Language API 的 gross cost，依到期日優先扣除同幣別額度。BigQuery export 資料可能延遲。
-
-## 怎麼確認有沒有呼叫 API
-
-使用 **1.6.1 或更新版本**，點選選單列 App → **查看紀錄**（也可從設定或管理視窗開啟「API 狀態與紀錄」）：
-
-- 各平台分別顯示尚未測試、未設定、同步中、成功或失敗。
-- 「最近嘗試」與「最近成功」分開記錄；失敗不會更新成功時間。
-- 「本次已發起 N 次 HTTP 請求」會計入分頁、重試及 Gemini 的 Google 登入。缺少金鑰、Keychain 無法讀取或設定不完整時會顯示沒有發起請求。
-- 每次請求會記錄時間、平台、API 路徑、HTTP 回應碼與重試；HTTP 200 但資料解析失敗仍標示失敗。
-- 最近 120 筆紀錄保存在本機，重啟後仍可查看。紀錄不包含請求標頭、本文、查詢參數或金鑰；伺服器錯誤中的憑證會遮蔽。
-- ElevenLabs 回傳 `missing_permissions`／`user_read` 時，會直接提示開啟 **User → Read**。若有 IP 白名單，請確認目前網路的 IP 已被允許。
-- Lovable、Notion 會明確標示手動管理，不會呼叫 API。
-
-請確認選單上的版本號。專案 `dist` 中的新版不會自動替換 `/Applications/AI Credits.app`；退出舊版，將新版拖到「應用程式」替換後重新開啟。
-
-## 本機資料與排錯
-
-一般資料儲存在 `~/Library/Application Support/AICredits/credits.json`；API Key 與 Service Account JSON 僅存於 macOS Keychain，不寫入專案或 Git。
-
-- 設定頁會分別顯示平台的連線狀態、錯誤原因與成功時間；每筆額度顯示最後更新時間。同步失敗會保留既有數字。
-- 若 Keychain 無法讀取，App 會提示解鎖登入鑰匙圈並按「立即同步」授權；背景同步不彈出授權視窗。
-- OpenAI／Claude 需使用 Admin API Key。401／403 請確認金鑰與權限；503 為伺服器回應，重試後仍失敗時可稍後再同步。
-- 所有測試使用模擬 HTTP 回應與記憶體金鑰，不使用真實 API Key，不呼叫正式帳務服務。
-
-官方 API 文件：[OpenAI 帳務 API](https://platform.openai.com/docs/api-reference/usage/costs)、[Claude Cost Report](https://platform.claude.com/docs/en/api/http/beta/organization/cost_report/retrieve)、[ElevenLabs Subscription](https://elevenlabs.io/docs/api-reference/user/subscription/get)。
+本專案為獨立開源工具，與所列服務供應商無官方合作或隸屬關係。

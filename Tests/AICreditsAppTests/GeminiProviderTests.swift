@@ -59,4 +59,36 @@ final class GeminiProviderTests: XCTestCase {
         let pem = try XCTUnwrap(String(data: keyData, encoding: .utf8))
         XCTAssertNotNil(GeminiBigQueryProvider.privateKey(fromPEM: pem))
     }
+
+    func testRejectsUntrustedTokenEndpointsBeforeSigningOrNetwork() async throws {
+        let fixture = HTTPFixture([])
+        let provider = GeminiBigQueryProvider(client: fixture.makeClient())
+        for endpoint in [
+            "https://example.invalid/token",
+            "http://oauth2.googleapis.com/token",
+            "https://oauth2.googleapis.com.example.invalid/token",
+            "https://oauth2.googleapis.com/token?redirect=example.invalid",
+            "https://[invalid"
+        ] {
+            let json = try JSONSerialization.data(withJSONObject: [
+                "project_id": "billing-project",
+                "client_email": "reader@billing-project.iam.gserviceaccount.com",
+                "private_key": "invalid-test-key",
+                "token_uri": endpoint
+            ])
+            do {
+                _ = try await provider.fetchUsage(
+                    serviceAccountJSON: String(decoding: json, as: UTF8.self),
+                    billingTable: "billing-project.billing.costs",
+                    since: .now
+                )
+                XCTFail("Untrusted token endpoint was accepted")
+            } catch GoogleCloudError.invalidServiceAccount {
+                // The imported endpoint is rejected before trying the invalid key.
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+        XCTAssertTrue(fixture.requests.isEmpty)
+    }
 }
