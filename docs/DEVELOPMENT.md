@@ -56,6 +56,14 @@ open "dist/AI Credits.app"
 
 以 App 原有 SwiftUI 選單與虛構 fixture 離線渲染 `docs/images/menu-preview.png`。示範程序使用暫存檔與空憑證儲存，不讀取使用者帳務或 Keychain，也不開啟正式 App。圖中比例不代表官方價格。
 
+分享主圖沿用既有 App 圖示與上述示範畫面，以 AppKit 排版，不需要額外圖像套件：
+
+```bash
+./Scripts/render-share-images.sh
+```
+
+輸出 `docs/images/facebook-cover.png`（1200 × 630）與 `docs/images/social-preview.png`（1280 × 640）。兩張 PNG 均小於 1 MB。更新示範畫面後重新執行即可；連結預覽的設定方式見 [Facebook 分享文案](FACEBOOK_POST.md)。
+
 ## 發佈
 
 在 `Resources/Info.plist` 更新顯示版本與 build number，補上 `CHANGELOG.md`，通過測試後再建立 GitHub release。不要上傳個人的 `dist`、簽署身分、帳務檔或 API 憑證。

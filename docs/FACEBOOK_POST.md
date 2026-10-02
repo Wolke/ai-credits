@@ -1,6 +1,12 @@
 # Facebook 分享文案
 
-以下可直接複製貼上。建議配圖：[示範畫面](images/menu-preview.png)（虛構資料）。
+以下可直接複製貼上，搭配 [FB 主圖（1200 × 630 PNG）](images/facebook-cover.png)。圖中的 App 畫面使用虛構示範資料。
+
+![AI Credits 分享主圖](images/facebook-cover.png)
+
+若希望貼上 GitHub 連結時自動帶出主圖，可使用 [GitHub 分享預覽圖（1280 × 640 PNG）](images/social-preview.png)，到[專案 Settings](https://github.com/Wolke/ai-credits/settings)的 **Social preview → Edit → Upload an image…** 上傳。圖片已放進 README 不代表已設定連結預覽；這是 GitHub 的獨立設定。[官方設定說明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview)
+
+直接發 FB 圖片貼文時，上傳 `facebook-cover.png`，再貼下方文案與專案連結即可。
 
 ---
 

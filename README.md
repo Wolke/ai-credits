@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Resources/AppIcon.svg" width="96" alt="AI Credits icon">
+  <img src="docs/images/social-preview.png" width="1280" alt="AI Credits：AI 額度與到期日，一眼掌握。免費開源的 macOS 選單列工具。">
 </p>
 
 # AI Credits
