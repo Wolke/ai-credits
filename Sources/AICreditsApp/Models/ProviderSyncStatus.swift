@@ -55,11 +55,9 @@ struct ProviderSyncStatus: Equatable, Codable, Sendable {
              cumulativeCost: calculation.cost, currency: calculation.state.currency, fetchedAt: calculation.state.fetchedAt)
     }
 
-    static func historical(_ calculation: HistoricalBalanceReconciliation) -> Self {
-        let total = calculation.rows.reduce(Decimal.zero) { $0 + $1.entry.originalAmount }
-        let uncovered = calculation.uncoveredCost > 0 ? " + 未由贈送額度支付 \(calculation.uncoveredCost.formatted())" : ""
+    static func activeBalance(_ calculation: ActiveBalanceReconciliation) -> Self {
         return Self(state: .success,
-                    message: "依花費日期、先到期先扣估算（\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .shortened))）：原始總額 \(total.formatted()) − API 累計花費 \(calculation.cost.formatted()) − 過期未用 \(calculation.expiredUnused.formatted())\(uncovered) = 有效剩餘 \(calculation.remaining.formatted()) \(calculation.state.currency)；每次同步自動重算",
+                    message: "未到期原始額度 − 期間累計花費：\(calculation.formula)（\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .shortened))）；重疊期間花費只扣一次，已到期額度不參與抵扣",
                     cumulativeCost: calculation.cost, currency: calculation.state.currency, fetchedAt: calculation.state.fetchedAt)
     }
 }

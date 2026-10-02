@@ -6,7 +6,6 @@ struct ProviderUsage: Sendable {
     let currency: String
     let fetchedAt: Date
     var costBuckets: [CostBucket]?
-    var allocationCosts: [CostBucket]?
 }
 
 struct CostBucket: Codable, Equatable, Sendable {
@@ -94,22 +93,6 @@ struct OpenAIProvider: CreditProvider {
 
     func fetchUsage(apiKey: String, since: Date) async throws -> ProviderUsage {
         try await fetchReport(apiKey: apiKey, since: since, end: now())
-    }
-
-    func fetchUsage(apiKey: String, since: Date, grantBoundaries: [Date]) async throws -> ProviderUsage {
-        // Use one end time for the complete report and every disjoint allocation period.
-        let end = Date(timeIntervalSince1970: floor(now().timeIntervalSince1970))
-        var usage = try await fetchReport(apiKey: apiKey, since: since, end: end)
-        let boundaries = [since] + Array(Set(grantBoundaries.filter { $0 > since && $0 < end })).sorted() + [end]
-        var periods: [CostBucket] = []
-        for (start, finish) in zip(boundaries, boundaries.dropFirst()) {
-            let report = try await fetchReport(apiKey: apiKey, since: start, end: finish)
-            guard report.currency == usage.currency else { throw HistoryError.inconsistentPeriods }
-            periods.append(CostBucket(start: start, end: finish, cost: report.cumulativeCost))
-        }
-        guard periods.reduce(Decimal.zero, { $0 + $1.cost }) == usage.cumulativeCost else { throw HistoryError.inconsistentPeriods }
-        usage.allocationCosts = periods
-        return usage
     }
 
     private func fetchReport(apiKey: String, since: Date, end: Date) async throws -> ProviderUsage {

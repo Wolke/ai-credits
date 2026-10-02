@@ -59,37 +59,6 @@ final class CreditProviderTests: XCTestCase {
         XCTAssertNil(usage.costBuckets)
     }
 
-    func testAllocationFetchesDisjointIntervalsAndChecksTheirTotal() async throws {
-        let fixture = HTTPFixture([10, 4, 6].map { cost in
-            .init(body: "{\"data\":[{\"results\":[{\"amount\":{\"value\":\(cost),\"currency\":\"usd\"}}]}],\"has_more\":false}")
-        })
-        let start = Date(timeIntervalSince1970: 1_800_000_000)
-        let end = start.addingTimeInterval(86_400 * 2)
-        let boundary = start.addingTimeInterval(86_400)
-        let usage = try await OpenAIProvider(client: fixture.makeClient(), now: { end }).fetchUsage(apiKey: "test", since: start, grantBoundaries: [boundary])
-        XCTAssertEqual(usage.cumulativeCost, 10)
-        XCTAssertEqual(usage.allocationCosts?.map(\.cost), [4, 6])
-        XCTAssertEqual(usage.allocationCosts?.first?.end, usage.allocationCosts?.last?.start)
-        let queries = fixture.requests.map { request in
-            Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
-        }
-        XCTAssertEqual(queries[1]["start_time"], queries[0]["start_time"])
-        XCTAssertEqual(queries[1]["end_time"], queries[2]["start_time"])
-        XCTAssertEqual(queries[2]["end_time"], queries[0]["end_time"])
-    }
-
-    func testChangedBillingTotalsBetweenRequestsRejectPartialReconstruction() async throws {
-        let fixture = HTTPFixture([10, 4, 7].map { cost in
-            .init(body: "{\"data\":[{\"results\":[{\"amount\":{\"value\":\(cost),\"currency\":\"usd\"}}]}],\"has_more\":false}")
-        })
-        let start = Date(timeIntervalSince1970: 1_800_000_000)
-        let end = start.addingTimeInterval(86_400 * 2)
-        do {
-            _ = try await OpenAIProvider(client: fixture.makeClient(), now: { end }).fetchUsage(apiKey: "test", since: start, grantBoundaries: [start.addingTimeInterval(86_400)])
-            XCTFail("Reports collected while billing changes must not overwrite balances")
-        } catch { XCTAssertTrue(error is HistoryError) }
-    }
-
     func testRejectsMissingOrRepeatedPaginationCursor() async {
         for replies in [
             [HTTPFixture.Reply(body: #"{"data":[],"has_more":true}"#)],

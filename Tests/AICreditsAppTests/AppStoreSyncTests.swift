@@ -200,21 +200,50 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertEqual(store.data.entries[0].remainingAmount, 100)
     }
 
-    func testOpenAIRebuildsOriginalGrantsWithExpiredHistoryAndReportsFormula() async throws {
-        let fixture = HTTPFixture(["4131.312155995", "1000", "400", "2731.312155995"].map { cost in
+    func testOpenAICurrentPoolSubtractsPeriodSpendOnceAndLeavesExpiredGrantsUntouched() async throws {
+        let fixture = HTTPFixture(["4131.312155995"].map { cost in
             .init(body: "{\"data\":[{\"results\":[{\"amount\":{\"value\":\(cost),\"currency\":\"usd\"}}]}],\"has_more\":false}")
         })
         let live = CreditEntry(platform: .openAI, originalAmount: 5000, remainingAmount: Decimal(string: "2199.92")!,
             receivedAt: .now.addingTimeInterval(-4 * 86_400), expiresAt: .now.addingTimeInterval(90 * 86_400), calculatesFromOriginal: true)
         let old = CreditEntry(platform: .openAI, originalAmount: 1200, remainingAmount: 1200,
             receivedAt: .now.addingTimeInterval(-3 * 86_400), expiresAt: .now.addingTimeInterval(-2 * 86_400), calculatesFromOriginal: true)
-        let store = try store(fixture: fixture, credentials: MemoryCredentials([.openAI: "test"]), data: AppData(entries: [live, old]))
+        let later = CreditEntry(platform: .openAI, originalAmount: 5000, remainingAmount: 5000,
+            receivedAt: .now.addingTimeInterval(-2 * 86_400), expiresAt: .now.addingTimeInterval(180 * 86_400), calculatesFromOriginal: true)
+        let small = CreditEntry(platform: .openAI, originalAmount: 250, remainingAmount: 250,
+            receivedAt: .now.addingTimeInterval(-86_400), expiresAt: .now.addingTimeInterval(210 * 86_400), calculatesFromOriginal: true)
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.openAI: "test"]), data: AppData(entries: [live, old, later, small]))
+        let savedOld = store.data.entries[1]
         await store.refresh(platform: .openAI)
-        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "1268.687844005"))
-        XCTAssertEqual(store.data.entries[1].remainingAmount, 800)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "868.687844005"))
+        XCTAssertEqual(store.data.entries[1], savedOld)
+        XCTAssertEqual(store.activeReconciliation(for: .openAI)?.remaining, Decimal(string: "6118.687844005"))
         XCTAssertEqual(store.status(for: .openAI).state, .success)
-        XCTAssertTrue(store.status(for: .openAI).message.contains("過期未用 800"))
-        XCTAssertEqual(fixture.requests.count, 4)
-        XCTAssertEqual(store.data.costSyncStates?[.openAI]?.allocationCosts?.count, 3)
+        XCTAssertTrue(store.status(for: .openAI).message.contains("已到期額度不參與抵扣"))
+        XCTAssertEqual(fixture.requests.count, 1)
+    }
+
+    func testCachedOpenAIPoolRecalculatesOnStartupAndEditWithoutFakingAPISuccess() throws {
+        let now = Date.now
+        let start = Date(timeIntervalSince1970: floor(now.addingTimeInterval(-4 * 86_400).timeIntervalSince1970))
+        let live = CreditEntry(platform: .openAI, originalAmount: 5000, remainingAmount: 5000,
+            receivedAt: start, expiresAt: now.addingTimeInterval(90 * 86_400), calculatesFromOriginal: true)
+        let later = CreditEntry(platform: .openAI, originalAmount: 5000, remainingAmount: 5000,
+            receivedAt: start.addingTimeInterval(86_400), expiresAt: now.addingTimeInterval(180 * 86_400), calculatesFromOriginal: true)
+        let cost = Decimal(string: "4131.312155995")!
+        let failed = ProviderSyncStatus.failed("Keychain authorization required")
+        let data = AppData(entries: [live, later], providerLastCosts: [.openAI: cost], costSyncStates: [
+            .openAI: CostSyncState(since: start, cumulativeCost: cost, currency: "USD", fetchedAt: now)
+        ], providerSyncStatuses: [.openAI: failed])
+        let fixture = HTTPFixture([])
+        let store = try store(fixture: fixture, credentials: MemoryCredentials(), data: data)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "868.687844005"))
+        XCTAssertEqual(store.status(for: .openAI), failed)
+        var edited = store.data.entries[0]
+        edited.originalAmount = 6000
+        store.upsert(edited)
+        XCTAssertEqual(store.data.entries[0].remainingAmount, Decimal(string: "1868.687844005"))
+        XCTAssertEqual(store.status(for: .openAI), failed)
+        XCTAssertTrue(fixture.requests.isEmpty)
     }
 }

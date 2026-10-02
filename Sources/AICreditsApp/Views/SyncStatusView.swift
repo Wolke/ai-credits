@@ -115,7 +115,12 @@ struct ProviderStatusRow: View {
                     } else {
                         Text("尚無此幣別的已發放額度").font(.caption)
                     }
-                    if let proposal = store.reconciliation(for: platform) {
+                    if let calculation = store.activeReconciliation(for: platform) {
+                        Text("未到期原始額度 − 期間花費：\(calculation.formula)")
+                            .font(.caption.bold())
+                        Text("花費期間：\(calculation.state.since.formatted(date: .numeric, time: .omitted))～\(calculation.state.fetchedAt.formatted(date: .numeric, time: .shortened))。依已儲存 API 花費估算；重疊期間只扣一次，已到期額度不參與抵扣。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    } else if let proposal = store.reconciliation(for: platform) {
                         if proposal.entry.usesOriginalCostBalance {
                             Text("自動計算：原始額度 − API 累計花費")
                                 .font(.caption2).foregroundStyle(.secondary)
@@ -123,11 +128,11 @@ struct ProviderStatusRow: View {
                             Button("校正餘額並啟用自動計算…") { reconciliation = proposal }
                                 .font(.caption).disabled(status.state == .syncing)
                         }
-                    } else if HistoricalBalanceReconciliation.isEnabled(for: platform, in: store.data, at: state.fetchedAt) {
-                        Text("多筆自動計算：按取得／到期時間分段查詢花費，優先扣最早到期的額度。")
+                    } else if ActiveBalanceReconciliation.isEnabled(for: platform, in: store.data, at: .now) {
+                        Text("有效額度或日期已變更，請同步從最早有效額度取得日至今的花費。")
                             .font(.caption2).foregroundStyle(.secondary)
                     } else {
-                        Text("多筆額度須按花費發生日期分攤；累計花費不能直接再扣到某一筆剩餘額度。")
+                        Text("OpenAI 可將所有有效額度開啟自動計算，以未到期原始總額扣除期間花費；其他情況請依官方帳務頁校正。")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }

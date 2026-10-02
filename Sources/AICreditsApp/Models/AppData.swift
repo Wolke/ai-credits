@@ -18,5 +18,4 @@ struct CostSyncState: Codable, Equatable, Sendable {
     var fetchedAt: Date
     var source: String?
     var costBuckets: [CostBucket]?
-    var allocationCosts: [CostBucket]?
 }

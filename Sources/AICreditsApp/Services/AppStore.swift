@@ -88,14 +88,17 @@ final class AppStore: ObservableObject {
     func archive(id: UUID) {
         guard let index = data.entries.firstIndex(where: { $0.id == id }) else { return }
         data.entries[index].isArchived = true
+        recalculateOriginalBalance(for: data.entries[index].platform)
         save()
     }
 
     func delete(id: UUID) {
+        let platform = data.entries.first { $0.id == id }?.platform
         data.entries.removeAll { $0.id == id }
         data.deliveredNotifications = data.deliveredNotifications.filter {
             !$0.hasPrefix(id.uuidString + "-")
         }
+        if let platform { recalculateOriginalBalance(for: platform) }
         save()
     }
 
@@ -126,10 +129,16 @@ final class AppStore: ObservableObject {
 
     private func recalculateOriginalBalance(for platform: CreditPlatform) {
         guard data.costSyncStates?[platform]?.source == billingSource(for: platform) else { return }
-        if let state = data.costSyncStates?[platform], HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: state.fetchedAt) {
-            if let calculation = try? HistoricalBalanceReconciliation.calculate(for: platform, in: data) {
+        if ActiveBalanceReconciliation.isEnabled(for: platform, in: data, at: now()) {
+            if let calculation = activeReconciliation(for: platform) {
                 calculation.apply(to: &data)
-                if providerStatuses[platform]?.state == .success { setStatus(.historical(calculation), for: platform) }
+                if providerStatuses[platform]?.state == .success { setStatus(.activeBalance(calculation), for: platform) }
+            } else {
+                for grant in ActiveBalanceReconciliation.grants(for: platform, in: data, at: now()) {
+                    if let index = data.entries.firstIndex(where: { $0.id == grant.id }) {
+                        data.entries[index].syncBaselineCost = nil
+                    }
+                }
             }
             return
         }
@@ -138,6 +147,11 @@ final class AppStore: ObservableObject {
               let calculation = reconciliation(for: platform) else { return }
         // Recomputing cached data is not a new API success; retain any current connection error.
         if providerStatuses[platform]?.state == .success { setStatus(.calculated(calculation), for: platform) }
+    }
+
+    func activeReconciliation(for platform: CreditPlatform) -> ActiveBalanceReconciliation? {
+        guard data.costSyncStates?[platform]?.source == billingSource(for: platform) else { return nil }
+        return try? ActiveBalanceReconciliation.calculate(for: platform, in: data, at: now())
     }
 
     func setAPIKey(_ key: String, for platform: CreditPlatform) throws {
@@ -173,6 +187,9 @@ final class AppStore: ObservableObject {
     func refreshIfNeeded() async {
         // Publishing also refreshes day counters after midnight or sleep, without a successful API call.
         objectWillChange.send()
+        let previousEntries = data.entries
+        recalculateOriginalBalance(for: .openAI)
+        if previousEntries != data.entries { save() }
         let due = CreditPlatform.allCases.filter {
             $0.supportsAutomaticSync && now().timeIntervalSince(lastAttempts[$0] ?? .distantPast) >= $0.refreshInterval
         }
@@ -258,13 +275,7 @@ final class AppStore: ObservableObject {
                 let usage: ProviderUsage
                 switch platform {
                 case .openAI:
-                    let provider = OpenAIProvider(client: monitoredClient, now: now)
-                    if HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: now()) {
-                        let grants = HistoricalBalanceReconciliation.grants(for: platform, in: data, at: now())
-                        usage = try await provider.fetchUsage(apiKey: key, since: start, grantBoundaries: HistoricalBalanceReconciliation.boundaries(for: grants))
-                    } else {
-                        usage = try await provider.fetchUsage(apiKey: key, since: start)
-                    }
+                    usage = try await OpenAIProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
                 case .claude:
                     usage = try await ClaudeProvider(client: monitoredClient, now: now).fetchUsage(apiKey: key, since: start)
                 case .gemini:
@@ -286,9 +297,9 @@ final class AppStore: ObservableObject {
                     !$0.isArchived && $0.platform == platform && $0.daysUntilExpiration(now: usage.fetchedAt) >= 0
                         && $0.receivedAt <= usage.fetchedAt && $0.unit.caseInsensitiveCompare(usage.currency) == .orderedSame
                 }
-                if HistoricalBalanceReconciliation.isEnabled(for: platform, in: data, at: usage.fetchedAt) {
-                    let calculation = try HistoricalBalanceReconciliation.calculate(for: platform, in: data)
-                    setStatus(.historical(calculation), for: platform)
+                if ActiveBalanceReconciliation.isEnabled(for: platform, in: data, at: usage.fetchedAt) {
+                    let calculation = try ActiveBalanceReconciliation.calculate(for: platform, in: data)
+                    setStatus(.activeBalance(calculation), for: platform)
                 } else if data.entries.contains(where: { $0.platform == platform && !$0.isArchived && $0.usesOriginalCostBalance }) {
                     guard let calculation = reconciliation(for: platform), calculation.entry.usesOriginalCostBalance else {
                         setStatus(.failed("API 已讀取花費，但原始額度自動計算需要同期間、同幣別的單筆額度；此次未改動餘額。請檢查額度日期與計算方式。"), for: platform)
