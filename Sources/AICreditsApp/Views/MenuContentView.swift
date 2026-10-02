@@ -4,6 +4,7 @@ import AppKit
 struct MenuContentView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.openWindow) private var openWindow
+    @State private var showingSyncDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -44,30 +45,38 @@ struct MenuContentView: View {
                             Divider()
                         }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxHeight: 400)
+                .scrollIndicators(.visible)
+                // MenuBarExtra uses the ideal size; a maximum alone lets the
+                // ScrollView collapse to a single header during window sizing.
+                .frame(height: 400)
+                .layoutPriority(1)
             }
 
             Divider()
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(store.isRefreshing ? "API 同步中…" : "API 同步狀態").font(.caption.bold())
-                    Spacer()
-                    Button("查看紀錄") { openWindow(id: "sync-status") }
-                        .buttonStyle(.link).font(.caption)
-                }
-                ForEach(CreditPlatform.allCases.filter(\.supportsAutomaticSync)) { platform in
-                    let status = store.status(for: platform)
-                    HStack(spacing: 6) {
-                        Image(systemName: status.symbol).foregroundStyle(status.color)
-                        Text(platform.rawValue)
-                        Spacer()
-                        Text(status.stateLabel).foregroundStyle(status.color)
+                DisclosureGroup(isExpanded: $showingSyncDetails) {
+                    ForEach(CreditPlatform.allCases.filter(\.supportsAutomaticSync)) { platform in
+                        let status = store.status(for: platform)
+                        HStack(spacing: 6) {
+                            Image(systemName: status.symbol).foregroundStyle(status.color)
+                            Text(platform.rawValue)
+                            Spacer()
+                            Text(status.stateLabel).foregroundStyle(status.color)
+                        }
+                        .font(.caption)
                     }
-                    .font(.caption)
+                    Text("Lovable、Notion：手動管理，不會呼叫 API")
+                        .font(.caption2).foregroundStyle(.secondary)
+                } label: {
+                    HStack {
+                        Text(store.isRefreshing ? "API 同步中…" : "API 同步狀態").font(.caption.bold())
+                        Spacer()
+                        Button("查看紀錄") { openWindow(id: "sync-status") }
+                            .buttonStyle(.link).font(.caption)
+                    }
                 }
-                Text("Lovable、Notion：手動管理，不會呼叫 API")
-                    .font(.caption2).foregroundStyle(.secondary)
                 if store.data.lastRefreshError != nil || store.persistenceError != nil {
                     Button("同步有錯誤，查看完整原因") { openWindow(id: "sync-status") }
                         .buttonStyle(.link).foregroundStyle(.red).font(.caption)
