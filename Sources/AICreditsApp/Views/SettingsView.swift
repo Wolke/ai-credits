@@ -43,7 +43,7 @@ struct SettingsView: View {
                     if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
                 }
             }
-            Section("ElevenLabs credits") {
+            Section("ElevenLabs credits／USD") {
                 SecureField("ElevenLabs API Key（留空保留原值）", text: $elevenLabsKey)
                 ProviderStatusRow(platform: .elevenLabs, status: store.providerStatuses[.elevenLabs])
                 Text("在 ElevenLabs → Developers → API Keys 編輯金鑰，將 User 設為 Read（user_read）。這個 App 只讀取訂閱資料，不需要語音生成權限。每 15 分鐘讀取方案總額度、已使用 credits 與下次重設時間，並自動建立或更新方案額度。")
@@ -56,6 +56,7 @@ struct SettingsView: View {
                     if isSavingElevenLabs { ProgressView().controlSize(.small) }
                     if let elevenLabsMessage { Text(elevenLabsMessage).font(.caption).foregroundStyle(.secondary) }
                 }
+                ElevenLabsValuationSettingsView()
             }
             Section("Gemini（Google Cloud Billing）") {
                 TextField(

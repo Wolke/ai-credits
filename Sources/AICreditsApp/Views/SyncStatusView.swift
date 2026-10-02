@@ -109,6 +109,15 @@ struct ProviderStatusRow: View {
                     .foregroundStyle(status.color)
                 Text(status.message).font(.caption)
                     .foregroundStyle(status.state == .failed ? Color.red : Color.secondary)
+                if platform == .elevenLabs,
+                   let summary = store.balanceSummaries.first(where: { $0.platform == .elevenLabs && $0.currency == "CREDITS" }),
+                   let estimatedUSD = store.estimatedUSD(for: summary),
+                   let valuation = store.data.elevenLabsUSDValuation {
+                    Text("預估剩餘：≈ \(estimatedUSD.formatted()) USD")
+                        .font(.caption.bold()).monospacedDigit()
+                    Text("換算基準：\(valuation.credits.formatted()) credits ≈ \(valuation.usd.formatted()) USD（手動設定）；API 原始剩餘 \(summary.remaining.formatted()) credits。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
                 if platform.usesCostEstimates, let state = store.data.costSyncStates?[platform] {
                     if let summary = store.balanceSummaries.first(where: { $0.platform == platform && $0.currency == state.currency.uppercased() }) {
                         PlatformBalanceBreakdown(summary: summary)

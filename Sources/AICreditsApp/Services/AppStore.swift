@@ -75,6 +75,24 @@ final class AppStore: ObservableObject {
         PlatformBalanceSummary.all(in: activeEntries)
     }
 
+    func estimatedUSD(for entry: CreditEntry) -> Decimal? {
+        guard entry.platform == .elevenLabs, entry.unit.caseInsensitiveCompare("credits") == .orderedSame else { return nil }
+        return data.elevenLabsUSDValuation?.estimate(for: entry.remainingAmount)
+    }
+
+    func estimatedUSD(for summary: PlatformBalanceSummary) -> Decimal? {
+        guard summary.platform == .elevenLabs, summary.currency == "CREDITS" else { return nil }
+        return data.elevenLabsUSDValuation?.estimate(for: summary.remaining)
+    }
+
+    func setElevenLabsUSDValuation(_ valuation: ElevenLabsUSDValuation?) throws {
+        guard valuation?.isValid != false else { throw CreditValuationError.invalidAmount }
+        var updated = data
+        updated.elevenLabsUSDValuation = valuation
+        try persistence.save(updated)
+        data = updated
+    }
+
     func upsert(_ entry: CreditEntry) {
         if let index = data.entries.firstIndex(where: { $0.id == entry.id }) {
             data.entries[index] = entry
@@ -168,6 +186,7 @@ final class AppStore: ObservableObject {
             credentialRevisions[platform, default: 0] += 1
             data.costSyncStates?[platform] = nil
             data.providerLastCosts[platform] = nil
+            if platform == .elevenLabs { data.elevenLabsUSDValuation = nil }
         }
         setStatus(trimmed.isEmpty ? .notConfigured(platform.credentialHint) : ProviderSyncStatus(state: .idle, message: "金鑰已儲存，等待測試"), for: platform)
         appendEvent(platform: platform, message: trimmed.isEmpty ? "已清除金鑰" : "金鑰已儲存，尚未測試")

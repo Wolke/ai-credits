@@ -3,6 +3,7 @@ import SwiftUI
 struct CreditRow: View {
     let entry: CreditEntry
     var compact = false
+    var estimatedUSD: Decimal?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -41,10 +42,15 @@ struct CreditRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(entry.originalBalancePending ? "上次餘額（待重算）" : (entry.isAutomaticSubscription ? "本筆 API 剩餘" : (entry.platform.usesCostEstimates ? "本筆預估剩餘" : "本筆手動剩餘")))
+                Text(estimatedUSD != nil ? "本筆預估美元" : (entry.originalBalancePending ? "上次餘額（待重算）" : (entry.isAutomaticSubscription ? "本筆 API 剩餘" : (entry.platform.usesCostEstimates ? "本筆預估剩餘" : "本筆手動剩餘"))))
                     .font(.caption2).foregroundStyle(.secondary)
-                Text("\(entry.remainingAmount.formatted()) \(entry.unit)")
-                    .monospacedDigit()
+                if let estimatedUSD {
+                    Text("≈ \(estimatedUSD.formatted()) USD").monospacedDigit()
+                    Text("\(entry.remainingAmount.formatted()) \(entry.unit)")
+                        .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                } else {
+                    Text("\(entry.remainingAmount.formatted()) \(entry.unit)").monospacedDigit()
+                }
                 if !compact {
                     ProgressView(value: progress)
                         .frame(width: 70)

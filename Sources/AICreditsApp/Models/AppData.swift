@@ -9,6 +9,7 @@ struct AppData: Codable, Sendable {
     var costSyncStates: [CreditPlatform: CostSyncState]?
     var providerSyncStatuses: [CreditPlatform: ProviderSyncStatus]?
     var syncEvents: [SyncEvent]?
+    var elevenLabsUSDValuation: ElevenLabsUSDValuation?
 }
 
 struct CostSyncState: Codable, Equatable, Sendable {

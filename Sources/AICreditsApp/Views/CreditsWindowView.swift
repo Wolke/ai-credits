@@ -32,7 +32,7 @@ struct CreditsWindowView: View {
                             Section {
                                 ForEach(showingExpired ? summary.entries : summary.availableEntries) { entry in
                                     HStack {
-                                        CreditRow(entry: entry)
+                                        CreditRow(entry: entry, estimatedUSD: store.estimatedUSD(for: entry))
                                             .contentShape(Rectangle())
                                             .onTapGesture { if !entry.isAutomaticSubscription { editingEntry = entry } }
                                         Button(role: .destructive) { deletingEntry = entry } label: {
@@ -50,7 +50,11 @@ struct CreditsWindowView: View {
                                     }
                                 }
                             } header: {
-                                Text("\(summary.platform.rawValue) · \(summary.totalLabel)（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
+                                if let estimatedUSD = store.estimatedUSD(for: summary) {
+                                    Text("\(summary.platform.rawValue) · 預估美元合計：≈ \(estimatedUSD.formatted()) USD（\(summary.remaining.formatted()) credits）")
+                                } else {
+                                    Text("\(summary.platform.rawValue) · \(summary.totalLabel)（\(summary.availableEntries.count) 筆）：\(summary.remaining.formatted()) \(summary.currency)")
+                                }
                             }
                         }
                     }

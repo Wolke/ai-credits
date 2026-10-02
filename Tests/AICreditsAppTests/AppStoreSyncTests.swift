@@ -246,4 +246,26 @@ final class AppStoreSyncTests: XCTestCase {
         XCTAssertEqual(store.status(for: .openAI), failed)
         XCTAssertTrue(fixture.requests.isEmpty)
     }
+
+    func testSavingDollarValuationChangesOnlyElevenLabsDisplayAndNewAccountClearsIt() throws {
+        let entry = CreditEntry(platform: .elevenLabs, originalAmount: 1000, remainingAmount: 700, unit: "credits", isSubscriptionBalance: true)
+        let fixture = HTTPFixture([])
+        let failed = ProviderSyncStatus.failed("connection unavailable")
+        let store = try store(fixture: fixture, credentials: MemoryCredentials([.elevenLabs: "old-key"]),
+            data: AppData(entries: [entry], providerSyncStatuses: [.elevenLabs: failed]))
+        let original = store.data.entries
+        XCTAssertNil(store.estimatedUSD(for: entry))
+        try store.setElevenLabsUSDValuation(.init(credits: 1000, usd: 10))
+        XCTAssertEqual(store.estimatedUSD(for: entry), 7)
+        XCTAssertEqual(store.estimatedUSD(for: try XCTUnwrap(store.balanceSummaries.first)), 7)
+        XCTAssertEqual(store.data.entries, original)
+        XCTAssertEqual(store.status(for: .elevenLabs), failed)
+        XCTAssertNil(store.estimatedUSD(for: CreditEntry(platform: .openAI, remainingAmount: 700)))
+        XCTAssertNil(store.estimatedUSD(for: CreditEntry(platform: .elevenLabs, remainingAmount: 700, unit: "USD")))
+        XCTAssertThrowsError(try store.setElevenLabsUSDValuation(.init(credits: 0, usd: 10)))
+        XCTAssertEqual(store.estimatedUSD(for: entry), 7)
+        try store.setAPIKey("new-key", for: .elevenLabs)
+        XCTAssertNil(store.data.elevenLabsUSDValuation, "A different account must not inherit the previous grant valuation")
+        XCTAssertTrue(fixture.requests.isEmpty)
+    }
 }

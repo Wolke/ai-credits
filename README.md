@@ -61,13 +61,17 @@ OpenAI／Claude 會讀取全部分頁。原始額度自動計算從取得日查�
 
 金鑰只代表 API 組織帳務，不代表 ChatGPT／Claude 聊天訂閱的訊息配額。到期天數依自行設定的日期計算，每分鐘更新畫面，不依賴 API 成功與否。
 
-### ElevenLabs credits
+### ElevenLabs credits 與 USD 換算
 
 1. 在 ElevenLabs 建立可讀取使用者資料的 API Key，在 Developers → API Keys 的權限中將 User 設為 Read（`user_read`）；不需要 Text to Speech、Voices 或寫入權限。
-2. 到 App「設定 → ElevenLabs credits」貼上金鑰，按「儲存並測試 ElevenLabs」。
+2. 到 App「設定 → ElevenLabs credits／USD」貼上金鑰，按「儲存並測試 ElevenLabs」。
 3. App 自動建立方案額度；之後更新同一筆紀錄，跨期時套用新的總額度、剩餘量與重設時間。
 
 剩餘 credits = `max(0, character_limit - character_count)`。重設時間取自 `next_character_count_reset_unix`，是方案重設時間；若 API 沒提供就顯示「未提供重設時間」。用完的方案仍會顯示，方便查看重設狀態。方案額度由 API 管理；手動新增的 ElevenLabs 額度保持獨立。刪除或封存自動方案後，下次同步會重新建立；清除金鑰可停止同步，並保留最後一次紀錄。
+
+1.6.8 起，可在同一區塊的「美元換算」填入「基準 credits」與「對應 USD」，例如依贈送方案的原始價值或帳單設定比例。預估美元 = 剩餘 credits × 基準 USD ÷ 基準 credits。選單、管理頁與設定同步顯示「≈ … USD」，並保留原始 credits。這是手動比例下的估值，不是 API 回報的美元餘額，沒有設定時不猜測價格。API 更新或 credits 重設不會覆寫換算比例；更換／清除 ElevenLabs 金鑰時會清除比例，避免套用到其他帳號。方案價格改變後需自行更新比例，也可隨時恢復只顯示 credits。
+
+ElevenLabs 各方案的 credit-to-dollar 比例不同，Grant 不應直接套用一般訂閱價格或把帳單應付金額當成額度價值。官方說明：[Pay As You Go](https://elevenlabs.io/docs/overview/administration/pay-as-you-go)。
 
 ### Gemini Google Cloud Billing
 

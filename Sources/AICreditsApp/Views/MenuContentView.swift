@@ -29,15 +29,16 @@ struct MenuContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(store.balanceSummaries.filter { !$0.availableEntries.isEmpty }) { summary in
+                            let estimatedUSD = store.estimatedUSD(for: summary)
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
-                                    Text("\(summary.platform.rawValue) \(summary.totalLabel)（\(summary.availableEntries.count) 筆）")
+                                    Text("\(summary.platform.rawValue) \(estimatedUSD != nil ? "預估美元合計" : summary.totalLabel)（\(summary.availableEntries.count) 筆）")
                                     Spacer()
-                                    Text("\(summary.remaining.formatted()) \(summary.currency)").monospacedDigit()
+                                    Text(estimatedUSD.map { "≈ \($0.formatted()) USD" } ?? "\(summary.remaining.formatted()) \(summary.currency)").monospacedDigit()
                                 }
                                 .font(.caption.bold())
                                 ForEach(summary.availableEntries) { entry in
-                                    CreditRow(entry: entry)
+                                    CreditRow(entry: entry, estimatedUSD: store.estimatedUSD(for: entry))
                                 }
                             }
                             Divider()
